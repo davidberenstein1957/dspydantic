@@ -1,0 +1,72 @@
+[project]
+name = "dspydantic"
+dynamic = ["version"]
+description = "Optimize Pydantic model field descriptions using DSPy"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "dspydantic contributors"}
+]
+keywords = ["pydantic", "dspy", "optimization", "llm", "ai"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+dependencies = [
+    "pydantic>=2.0.0",
+    "dspy>=3.0.4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.4.2",
+    "black>=24.0.0",
+    "ruff>=0.1.0",
+    "datasets",
+]
+images = [
+    "pillow>=10.0.0",
+]
+pdf = [
+    "pdf2image>=1.16.0",
+    "pillow>=10.0.0",
+]
+all = [
+    "pillow>=10.0.0",
+    "pdf2image>=1.16.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/dspydantic/__init__.py"
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
+]
+
