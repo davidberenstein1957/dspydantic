@@ -10,7 +10,7 @@ When building LLM applications that extract structured data, getting the right f
 
 ```python
 from pydantic import BaseModel, Field
-from dspydantic import PydanticOptimizer, Example
+from dspydantic import PydanticOptimizer, Example, create_optimized_model
 
 # Define your Pydantic model
 class User(BaseModel):
@@ -45,6 +45,13 @@ result = optimizer.optimize()
 print("Optimized descriptions:")
 for field, description in result.optimized_descriptions.items():
     print(f"  {field}: {description}")
+
+# Create optimized model with updated descriptions
+OptimizedUser = create_optimized_model(User, result.optimized_descriptions)
+
+# Use the optimized model directly
+user = OptimizedUser(name="John Doe", age=30, email="john@example.com")
+print(f"Model schema: {OptimizedUser.model_json_schema()}")
 ```
 
 ## Installation
@@ -119,35 +126,50 @@ result = optimizer.optimize()
 
 ### 4. Use Optimized Descriptions
 
+You can create a new optimized model class with the optimized descriptions applied directly:
+
 ```python
-from dspydantic import apply_optimized_descriptions
+from dspydantic import create_optimized_model
 from openai import OpenAI
 
-# Create optimized schema
-optimized_schema = apply_optimized_descriptions(Invoice, result.optimized_descriptions)
+# Create optimized model class with updated Field descriptions
+OptimizedInvoice = create_optimized_model(Invoice, result.optimized_descriptions)
+
+# Use the optimized model directly - it has optimized descriptions in Field definitions
+# The optimized model works exactly like the original, but with better descriptions
+optimized_schema = OptimizedInvoice.model_json_schema()
 
 # Use with OpenAI structured outputs
+# Include optimized system and instruction prompts if they were optimized
 client = OpenAI()
+messages = []
+if result.optimized_system_prompt:
+    messages.append({"role": "system", "content": result.optimized_system_prompt})
+
+user_content = "Extract: INV-2024-001, $1,234.56, 2024-01-15"
+if result.optimized_instruction_prompt:
+    user_content = f"{result.optimized_instruction_prompt}\n\n{user_content}"
+messages.append({"role": "user", "content": user_content})
+
 response = client.chat.completions.create(
     model="gpt-4o",
-    messages=[{"role": "user", "content": "Extract: INV-2024-001, $1,234.56, 2024-01-15"}],
-    response_format={
-        "type": "json_schema",
-        "json_schema": {
-            "name": Invoice.__name__,
-            "schema": optimized_schema,
-            "strict": True
-        }
-    }
+    messages=messages,
+    response_format=OptimizedInvoice
+    
 )
+
+# Parse response using the optimized model
+invoice = OptimizedInvoice.model_validate_json(response.choices[0].message.content)
 ```
+
+Alternatively, you can use `apply_optimized_descriptions` to get just the JSON schema without creating a new model class (useful for one-off schema generation).
 
 ## Working with Images
 
 ```python
 from pydantic import BaseModel, Field
 from typing import Literal
-from dspydantic import Example, PydanticOptimizer
+from dspydantic import Example, PydanticOptimizer, create_optimized_model
 
 class DigitClassification(BaseModel):
     digit: Literal[0, 1, 2, 3, 4, 5, 6, 7, 8, 9] = Field(
@@ -173,6 +195,14 @@ optimizer = PydanticOptimizer(
 )
 
 result = optimizer.optimize()
+
+# Create optimized model
+OptimizedDigitClassification = create_optimized_model(
+    DigitClassification, result.optimized_descriptions
+)
+
+# Use the optimized model
+digit = OptimizedDigitClassification(digit=5)
 ```
 
 ## Working with PDFs
@@ -263,10 +293,43 @@ optimizer = PydanticOptimizer(
 
 result = optimizer.optimize()
 
+# Create optimized model with updated descriptions
+from dspydantic import create_optimized_model
+OptimizedUser = create_optimized_model(User, result.optimized_descriptions)
+
 # Access optimized prompts
-print(result.optimized_system_prompt)
-print(result.optimized_instruction_prompt)
-print(result.optimized_descriptions)
+print("Optimized system prompt:", result.optimized_system_prompt)
+print("Optimized instruction prompt:", result.optimized_instruction_prompt)
+print("Optimized descriptions:", result.optimized_descriptions)
+
+# Use the optimized model and prompts with your LLM
+from openai import OpenAI
+
+client = OpenAI()
+messages = []
+if result.optimized_system_prompt:
+    messages.append({"role": "system", "content": result.optimized_system_prompt})
+
+user_content = "John Doe, 123 Main St, New York, 10001"
+if result.optimized_instruction_prompt:
+    user_content = f"{result.optimized_instruction_prompt}\n\n{user_content}"
+messages.append({"role": "user", "content": user_content})
+
+response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=messages,
+    response_format={
+        "type": "json_schema",
+        "json_schema": {
+            "name": OptimizedUser.__name__,
+            "schema": OptimizedUser.model_json_schema(),
+            "strict": True
+        }
+    }
+)
+
+# Parse response using the optimized model
+user = OptimizedUser.model_validate_json(response.choices[0].message.content)
 ```
 
 ## Built-in Evaluation Options
@@ -358,9 +421,66 @@ Example(
 )
 ```
 
+### `create_optimized_model(model, optimized_descriptions)`
+
+Create a new Pydantic model class with optimized field descriptions applied directly to Field definitions. This is the recommended way to use optimized descriptions.
+
+**Parameters:**
+
+- `model` (type[BaseModel]): The original Pydantic model class
+- `optimized_descriptions` (dict[str, str]): Dictionary mapping field paths to optimized descriptions
+
+**Returns:**
+
+- `type[BaseModel]`: A new Pydantic model class with optimized descriptions in Field definitions
+
+**Example:**
+
+```python
+from dspydantic import create_optimized_model
+
+# Create optimized model class
+OptimizedInvoice = create_optimized_model(Invoice, result.optimized_descriptions)
+
+# Use the optimized model directly - it works exactly like the original
+# but with optimized descriptions embedded in Field definitions
+invoice = OptimizedInvoice(
+    invoice_number="INV-2024-001",
+    total_amount=1234.56,
+    date="2024-01-15"
+)
+
+# Get JSON schema with optimized descriptions
+optimized_schema = OptimizedInvoice.model_json_schema()
+
+# Use with OpenAI structured outputs
+# Include optimized prompts if available
+messages = []
+if result.optimized_system_prompt:
+    messages.append({"role": "system", "content": result.optimized_system_prompt})
+
+user_content = "Extract invoice data..."
+if result.optimized_instruction_prompt:
+    user_content = f"{result.optimized_instruction_prompt}\n\n{user_content}"
+messages.append({"role": "user", "content": user_content})
+
+response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=messages,
+    response_format={
+        "type": "json_schema",
+        "json_schema": {
+            "name": OptimizedInvoice.__name__,
+            "schema": optimized_schema,
+            "strict": True
+        }
+    }
+)
+```
+
 ### `apply_optimized_descriptions(model, optimized_descriptions)`
 
-Create a JSON schema with optimized field descriptions for use with OpenAI structured outputs or other systems.
+Create a JSON schema dictionary with optimized field descriptions. Useful for one-off schema generation without creating a new model class.
 
 **Parameters:**
 
@@ -374,12 +494,25 @@ Create a JSON schema with optimized field descriptions for use with OpenAI struc
 **Example:**
 
 ```python
+from dspydantic import apply_optimized_descriptions
+
+# Get optimized schema without creating a new model class
 optimized_schema = apply_optimized_descriptions(Invoice, result.optimized_descriptions)
 
 # Use with OpenAI
+# Include optimized prompts if available
+messages = []
+if result.optimized_system_prompt:
+    messages.append({"role": "system", "content": result.optimized_system_prompt})
+
+user_content = "Extract invoice data..."
+if result.optimized_instruction_prompt:
+    user_content = f"{result.optimized_instruction_prompt}\n\n{user_content}"
+messages.append({"role": "user", "content": user_content})
+
 response = client.chat.completions.create(
     model="gpt-4o",
-    messages=[{"role": "user", "content": "Extract invoice data..."}],
+    messages=messages,
     response_format={
         "type": "json_schema",
         "json_schema": {
