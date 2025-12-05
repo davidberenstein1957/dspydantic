@@ -348,6 +348,78 @@ optimizer = PydanticOptimizer(
 )
 ```
 
+## Optimizer Selection
+
+DSPydantic supports multiple DSPy optimizers and automatically selects the best one based on your dataset size, or you can specify one manually.
+
+### Auto-Selection (Default)
+
+If you don't specify an optimizer, DSPydantic will automatically select one based on your dataset size:
+
+- **< 20 examples**: Uses `BootstrapFewShot` (good for small datasets)
+- **>= 20 examples**: Uses `BootstrapFewShotWithRandomSearch` (better for larger datasets)
+
+```python
+# Auto-selects optimizer based on dataset size
+optimizer = PydanticOptimizer(
+    model=User,
+    examples=examples,  # Will auto-select based on len(examples)
+    model_id="gpt-4o"
+)
+```
+
+### Manual Optimizer Selection
+
+You can specify an optimizer type by name:
+
+```python
+# Use a specific optimizer type
+optimizer = PydanticOptimizer(
+    model=User,
+    examples=examples,
+    optimizer_type="miprov2",  # or "gepa", "copro", "simba", etc.
+    model_id="gpt-4o"
+)
+```
+
+Available optimizer types include:
+
+- `"bootstrapfewshot"`: BootstrapFewShot optimizer
+- `"bootstrapfewshotwithrandomsearch"`: BootstrapFewShotWithRandomSearch
+- `"miprov2"`: MIPROv2 optimizer (best for instruction optimization)
+- `"miprov2zeroshot"`: MIPROv2 with zero-shot settings
+- `"gepa"`: GEPA optimizer (reflective prompt evolution)
+- `"copro"`: COPRO optimizer
+- `"simba"`: SIMBA optimizer
+- `"knnfewshot"`: KNNFewShot optimizer
+- `"labeledfewshot"`: LabeledFewShot optimizer
+- And more (all Teleprompter subclasses are automatically supported)
+
+### Custom Optimizer Instance
+
+You can also pass a custom optimizer instance directly:
+
+```python
+from dspy.teleprompt import MIPROv2
+
+# Create a custom optimizer with specific settings
+custom_optimizer = MIPROv2(
+    metric=my_metric_function,
+    num_threads=8,
+    auto="full",
+    max_bootstrapped_demos=8
+)
+
+# Use the custom optimizer
+optimizer = PydanticOptimizer(
+    model=User,
+    examples=examples,
+    optimizer=custom_optimizer  # Pass custom optimizer instance
+)
+```
+
+**Note**: `optimizer_type` and `optimizer` are mutually exclusive - you can only specify one of them.
+
 ## Examples
 
 See the [examples directory](examples/) for complete working examples:
@@ -369,11 +441,18 @@ Main optimizer class.
 - `evaluate_fn` (Callable | str | None): Evaluation function or built-in option ("exact", "levenshtein"). If None, uses default evaluation.
 - `system_prompt` (str | None): Optional initial system prompt to optimize
 - `instruction_prompt` (str | None): Optional initial instruction prompt to optimize
+- `lm` (dspy.LM | None): Optional DSPy language model instance. If provided, used instead of creating one from model_id/api_key.
 - `model_id` (str): LLM model ID (default: "gpt-4o")
 - `api_key` (str | None): API key (default: from OPENAI_API_KEY env var)
-- `verbose` (bool): Print progress (default: False)
-- `optimizer_type` (str): Optimizer type (default: "miprov2zeroshot")
+- `api_base` (str | None): API base URL (for Azure OpenAI or custom endpoints)
+- `api_version` (str | None): API version (for Azure OpenAI)
 - `num_threads` (int): Number of optimization threads (default: 4)
+- `init_temperature` (float): Initial temperature for optimization (default: 1.0)
+- `verbose` (bool): Print progress (default: False)
+- `optimizer_type` (str | None): Optimizer type (mutually exclusive with `optimizer`). If None and `optimizer` is None, auto-selects based on dataset size. Valid options include: "bootstrapfewshot", "bootstrapfewshotwithrandomsearch", "miprov2", "gepa", "copro", "simba", etc. (all Teleprompter subclasses are supported)
+- `optimizer` (Teleprompter | None): Custom optimizer instance (mutually exclusive with `optimizer_type`). If provided, this will be used directly.
+- `train_split` (float): Fraction of examples to use for training (rest for validation) (default: 0.8)
+- `optimizer_kwargs` (dict[str, Any] | None): Optional dictionary of additional keyword arguments to pass to the optimizer constructor. Only used if `optimizer` is None.
 
 **Returns:**
 
