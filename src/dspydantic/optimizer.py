@@ -2,26 +2,15 @@
 
 import os
 from collections.abc import Callable
-from typing import Any, cast
+from typing import Any
 
 import dspy
-from dspy.teleprompt import (  # noqa: E402
-    COPRO,
-    GEPA,
-    SIMBA,
-    BootstrapFewShot,
-    BootstrapFewShotWithRandomSearch,
-    KNNFewShot,
-    LabeledFewShot,
-    MIPROv2,
-    Teleprompter,
-)
+from dspy.teleprompt import MIPROv2, Teleprompter  # noqa: E402
 from pydantic import BaseModel
 
-from dspydantic.extractor import (
-    apply_optimized_descriptions,
-    extract_field_descriptions,
-)
+from dspydantic.evaluators import default_evaluate_fn
+from dspydantic.extractor import extract_field_descriptions
+from dspydantic.hitl import HitlManager
 from dspydantic.module import PydanticOptimizerModule
 from dspydantic.types import Example, OptimizationResult
 from dspydantic.utils import convert_images_to_dspy_images
@@ -34,142 +23,159 @@ class PydanticOptimizer:
     to iteratively improve descriptions based on example data and a custom
     evaluation function.
 
-    Example:
-        ```python
-        from pydantic import BaseModel, Field
-        from dspydantic import PydanticOptimizer
+    Examples:
+        Basic usage without evaluation function (uses default with "exact" metric)::
 
-        class User(BaseModel):
-            name: str = Field(description="User name")
-            age: int = Field(description="User age")
+            from pydantic import BaseModel, Field
+            from dspydantic import PydanticOptimizer
 
-        # Define examples
-        examples = [
-            Example(
-                input_data={"text": "John Doe, 30 years old"},
-                expected_output={"name": "John Doe", "age": 30}
+            class User(BaseModel):
+                name: str = Field(description="User name")
+                age: int = Field(description="User age")
+
+            examples = [
+                Example(
+                    input_data={"text": "John Doe, 30 years old"},
+                    expected_output={"name": "John Doe", "age": 30}
+                )
+            ]
+
+            optimizer = PydanticOptimizer(
+                model=User,
+                examples=examples,
+                model_id="gpt-4o",
+                api_key="your-key"
             )
-        ]
 
-        # Option 1: Create optimizer without evaluation function (uses default with "exact" metric)
-        # The default evaluation function uses the same LLM for structured extraction
-        optimizer = PydanticOptimizer(
-            model=User,
-            examples=examples,
-            model_id="gpt-4o",
-            api_key="your-key"
-        )
+        Using "exact" metric for exact string matching::
 
-        # Option 2: Create optimizer with "exact" metric (exact string matching)
-        optimizer = PydanticOptimizer(
-            model=User,
-            examples=examples,
-            evaluate_fn="exact",
-            model_id="gpt-4o",
-            api_key="your-key"
-        )
-
-        # Option 3: Create optimizer with "levenshtein" metric (fuzzy matching)
-        optimizer = PydanticOptimizer(
-            model=User,
-            examples=examples,
-            evaluate_fn="levenshtein",
-            model_id="gpt-4o",
-            api_key="your-key"
-        )
-
-        # Option 4: Create optimizer with custom evaluation function
-        def evaluate(
-            example,
-            optimized_descriptions,
-            optimized_system_prompt,
-            optimized_instruction_prompt,
-        ):
-            # Your custom evaluation logic here
-            # Return a score between 0.0 and 1.0
-            return 0.85
-
-        optimizer = PydanticOptimizer(
-            model=User,
-            examples=examples,
-            evaluate_fn=evaluate,
-            model_id="gpt-4o",
-            api_key="your-key"
-        )
-
-        # Option 5: Create optimizer with custom DSPy LM
-        import dspy
-        custom_lm = dspy.LM("gpt-4o", api_key="your-key")
-        optimizer = PydanticOptimizer(
-            model=User,
-            examples=examples,
-            lm=custom_lm  # Pass your custom LM (default eval will use this LM)
-        )
-
-        # Option 6: Pass optimizer as a string (optimizer type name)
-        optimizer = PydanticOptimizer(
-            model=User,
-            examples=examples,
-            optimizer="miprov2"  # Pass optimizer type as string
-        )
-
-        # Option 7: Pass a custom optimizer instance directly
-        from dspy.teleprompt import MIPROv2
-        custom_optimizer = MIPROv2(
-            metric=lambda x, y, trace=None: 0.9,
-            num_threads=8,
-            auto="full"
-        )
-        optimizer = PydanticOptimizer(
-            model=User,
-            examples=examples,
-            optimizer=custom_optimizer  # Pass your custom optimizer instance
-        )
-
-        # Option 8: Use None expected_output with LLM judge
-        examples_without_expected = [
-            Example(
-                text="John Doe, 30 years old",
-                expected_output=None  # No expected output, uses LLM judge
+            optimizer = PydanticOptimizer(
+                model=User,
+                examples=examples,
+                evaluate_fn="exact",
+                model_id="gpt-4o",
+                api_key="your-key"
             )
-        ]
-        optimizer = PydanticOptimizer(
-            model=User,
-            examples=examples_without_expected,
-            model_id="gpt-4o",
-            api_key="your-key"
-        )
 
-        # Option 9: Use None expected_output with custom judge LM
-        import dspy
-        judge_lm = dspy.LM("gpt-4o", api_key="your-key")
-        optimizer = PydanticOptimizer(
-            model=User,
-            examples=examples_without_expected,
-            evaluate_fn=judge_lm,  # Pass dspy.LM as evaluate_fn
-            model_id="gpt-4o",
-            api_key="your-key"
-        )
+        Using "levenshtein" metric for fuzzy matching::
 
-        # Option 10: Use None expected_output with custom judge function
-        def custom_judge(example, extracted_data, optimized_descriptions,
-                        optimized_system_prompt, optimized_instruction_prompt):
-            # Your custom evaluation logic here
-            # Return a score between 0.0 and 1.0
-            return 0.85
+            optimizer = PydanticOptimizer(
+                model=User,
+                examples=examples,
+                evaluate_fn="levenshtein",
+                model_id="gpt-4o",
+                api_key="your-key"
+            )
 
-        optimizer = PydanticOptimizer(
-            model=User,
-            examples=examples_without_expected,
-            evaluate_fn=custom_judge,  # Pass custom judge function as evaluate_fn
-            model_id="gpt-4o",
-            api_key="your-key"
-        )
+        Using "exact-hitl" or "levenshtein-hitl" for human-in-the-loop evaluation::
 
-        # Optimize
-        result = optimizer.optimize()
-        print(result.optimized_descriptions)
-        ```
+            optimizer = PydanticOptimizer(
+                model=User,
+                examples=examples,
+                evaluate_fn="exact-hitl",  # or "levenshtein-hitl"
+                model_id="gpt-4o",
+                api_key="your-key"
+            )
+
+        Using a custom evaluation function::
+
+            def evaluate(
+                example,
+                optimized_descriptions,
+                optimized_system_prompt,
+                optimized_instruction_prompt,
+            ):
+                # Your custom evaluation logic here
+                # Return a score between 0.0 and 1.0
+                return 0.85
+
+            optimizer = PydanticOptimizer(
+                model=User,
+                examples=examples,
+                evaluate_fn=evaluate,
+                model_id="gpt-4o",
+                api_key="your-key"
+            )
+
+        Using a custom DSPy LM::
+
+            import dspy
+            custom_lm = dspy.LM("gpt-4o", api_key="your-key")
+            optimizer = PydanticOptimizer(
+                model=User,
+                examples=examples,
+                lm=custom_lm
+            )
+
+        Passing optimizer as a string::
+
+            optimizer = PydanticOptimizer(
+                model=User,
+                examples=examples,
+                optimizer="miprov2"
+            )
+
+        Passing a custom optimizer instance::
+
+            from dspy.teleprompt import MIPROv2
+            custom_optimizer = MIPROv2(
+                metric=lambda x, y, trace=None: 0.9,
+                num_threads=8,
+                auto="full"
+            )
+            optimizer = PydanticOptimizer(
+                model=User,
+                examples=examples,
+                optimizer=custom_optimizer
+            )
+
+        Using None expected_output with LLM judge::
+
+            examples_without_expected = [
+                Example(
+                    text="John Doe, 30 years old",
+                    expected_output=None
+                )
+            ]
+            optimizer = PydanticOptimizer(
+                model=User,
+                examples=examples_without_expected,
+                model_id="gpt-4o",
+                api_key="your-key"
+            )
+
+        Using None expected_output with custom judge LM::
+
+            import dspy
+            judge_lm = dspy.LM("gpt-4o", api_key="your-key")
+            optimizer = PydanticOptimizer(
+                model=User,
+                examples=examples_without_expected,
+                evaluate_fn=judge_lm,
+                model_id="gpt-4o",
+                api_key="your-key"
+            )
+
+        Using None expected_output with custom judge function::
+
+            def custom_judge(example, extracted_data, optimized_descriptions,
+                            optimized_system_prompt, optimized_instruction_prompt):
+                # Your custom evaluation logic here
+                # Return a score between 0.0 and 1.0
+                return 0.85
+
+            optimizer = PydanticOptimizer(
+                model=User,
+                examples=examples_without_expected,
+                evaluate_fn=custom_judge,
+                model_id="gpt-4o",
+                api_key="your-key"
+            )
+
+        Running optimization::
+
+            result = optimizer.optimize()
+            print(result.optimized_descriptions)
     """
 
     def __init__(
@@ -201,18 +207,23 @@ class PydanticOptimizer:
             model: The Pydantic model class to optimize.
             examples: List of examples to use for optimization.
             evaluate_fn: Optional function that evaluates the quality of optimized prompts.
+
                 When expected_output is provided:
                     - Takes (Example, optimized_descriptions dict, optimized_system_prompt,
                       optimized_instruction_prompt), returns a float score (0.0-1.0).
                     - Can also be a string: "exact" for exact matching, "levenshtein" for
-                      Levenshtein distance-based matching, or None for default evaluation
-                      that performs structured extraction with the same LLM used for optimization.
+                      Levenshtein distance-based matching, "exact-hitl" for human-in-the-loop
+                      exact evaluation (shows GUI popup), "levenshtein-hitl" for
+                      human-in-the-loop Levenshtein evaluation (shows GUI popup), or None
+                      for default evaluation that performs structured extraction with the same
+                      LLM used for optimization.
+
                 When expected_output is None:
-                    - Can be a dspy.LM instance to use as a judge
+                    - Can be a dspy.LM instance to use as a judge.
                     - Can be a callable that takes (Example, extracted_data dict,
                       optimized_descriptions dict, optimized_system_prompt,
-                      optimized_instruction_prompt) and returns a float score (0.0-1.0)
-                    - If None, uses the default LLM judge (same LM as optimization)
+                      optimized_instruction_prompt) and returns a float score (0.0-1.0).
+                    - If None, uses the default LLM judge (same LM as optimization).
             system_prompt: Optional initial system prompt to optimize.
             instruction_prompt: Optional initial instruction prompt to optimize.
             lm: Optional DSPy language model instance. If provided, this will be used
@@ -229,12 +240,15 @@ class PydanticOptimizer:
             init_temperature: Initial temperature for optimization.
             verbose: If True, print detailed progress information.
             optimizer: Optimizer specification. Can be:
-                - A string (optimizer type name): e.g., "miprov2", "gepa", "bootstrapfewshot", etc.
-                  If None, optimizer will be auto-selected based on dataset size.
+
+                - A string (optimizer type name): e.g., "miprov2", "gepa",
+                  "bootstrapfewshot", etc. If None, optimizer will be auto-selected
+                  based on dataset size.
                 - A Teleprompter instance: Custom optimizer instance to use directly.
-                Available optimizer types include: "miprov2", "miprov2zeroshot", "gepa",
-                "bootstrapfewshot", "bootstrapfewshotwithrandomsearch", "knnfewshot",
-                "labeledfewshot", "copro", "simba", and all other Teleprompter subclasses.
+
+                  Available optimizer types include: "miprov2", "miprov2zeroshot", "gepa",
+                  "bootstrapfewshot", "bootstrapfewshotwithrandomsearch", "knnfewshot",
+                  "labeledfewshot", "copro", "simba", and all other Teleprompter subclasses.
             train_split: Fraction of examples to use for training (rest for validation).
             optimizer_kwargs: Optional dictionary of additional keyword arguments
                 to pass to the optimizer constructor. These will override default
@@ -294,6 +308,9 @@ class PydanticOptimizer:
 
         # Extract field descriptions from Pydantic model
         self.field_descriptions = extract_field_descriptions(self.model)
+
+        # Initialize HITL manager
+        self._hitl_manager = HitlManager(self)
 
         # Check that we have something to optimize
         has_field_descriptions = bool(self.field_descriptions)
@@ -375,427 +392,92 @@ class PydanticOptimizer:
             An evaluation function that performs structured extraction and compares
             with expected output (or uses judge if expected_output is None).
         """
+        # Check if original evaluate_fn is a custom judge callable
+        custom_judge_fn = None
+        if (
+            callable(self.evaluate_fn)
+            and not isinstance(self.evaluate_fn, str)
+            and not isinstance(self.evaluate_fn, dspy.LM)
+        ):
+            custom_judge_fn = self.evaluate_fn
 
-        def evaluate(
-            example: Example,
-            optimized_descriptions: dict[str, str],
-            optimized_system_prompt: str | None,
-            optimized_instruction_prompt: str | None,
-        ) -> float:
-            """Default evaluation function using LLM for structured extraction.
+        return default_evaluate_fn(
+            lm=lm,
+            model=self.model,
+            system_prompt=self.system_prompt,
+            instruction_prompt=self.instruction_prompt,
+            metric=metric,
+            judge_lm=judge_lm,
+            custom_judge_fn=custom_judge_fn,
+        )
 
-            Args:
-                example: The example with input_data and expected_output.
-                optimized_descriptions: Dictionary of optimized field descriptions.
-                optimized_system_prompt: Optimized system prompt (if provided).
-                optimized_instruction_prompt: Optimized instruction prompt (if provided).
-
-            Returns:
-                Score between 0.0 and 1.0 based on extraction accuracy.
-            """
-            import json
-            import re
-
-            # Build the extraction prompt
-            system_prompt = optimized_system_prompt or self.system_prompt or ""
-            instruction_prompt = (
-                optimized_instruction_prompt or self.instruction_prompt or ""
-            )
-
-            # Get input data from example
-            input_data = example.input_data
-
-            # Handle Pydantic models for input_data
-            if isinstance(input_data, BaseModel):
-                input_data = input_data.model_dump()
-
-            # Extract text and images from input_data
-            input_text: str | None = None
-            images: list[str] | None = None
-            dspy_images: list[Any] | None = None
-
-            if isinstance(input_data, dict):
-                input_text = input_data.get("text")
-                images = input_data.get("images")
-                # Convert base64 images to dspy.Image objects if present
-                if images:
-                    try:
-                        dspy_images = convert_images_to_dspy_images(images)
-                    except ImportError:
-                        # If dspy is not available, fall back to base64 strings
-                        dspy_images = None
-                # If no text but images exist, create a placeholder text
-                if not input_text and images:
-                    input_text = "Extract structured data from the provided image(s)."
-                elif not input_text:
-                    input_text = str(input_data)
-            else:
-                input_text = str(input_data)
-
-            # Apply optimized descriptions to the Pydantic model schema
-            # This creates a JSON schema with the optimized descriptions embedded
-            modified_schema = apply_optimized_descriptions(
-                self.model, optimized_descriptions
-            )
-
-            # Create the full prompt for extraction
-            prompt_parts = []
-            if system_prompt:
-                prompt_parts.append(f"System: {system_prompt}")
-            if instruction_prompt:
-                prompt_parts.append(f"Instruction: {instruction_prompt}")
-
-            # Include the JSON schema with optimized descriptions
-            # This provides the full structure, types, and optimized descriptions
-            prompt_parts.append(
-                f"\nJSON Schema (with optimized field descriptions):\n"
-                f"{json.dumps(modified_schema, indent=2)}"
-            )
-
-            # Also include a summary of field descriptions for clarity
-            if optimized_descriptions:
-                prompt_parts.append("\nField descriptions summary:")
-                for field_path, description in optimized_descriptions.items():
-                    prompt_parts.append(f"  - {field_path}: {description}")
-
-            if input_text:
-                prompt_parts.append(f"\nInput text: {input_text}")
-            if images:
-                prompt_parts.append(f"\nInput images: {len(images)} image(s) provided")
-            prompt_parts.append(
-                "\nExtract the structured data according to the JSON schema above "
-                "(which includes optimized field descriptions) and return it as valid JSON."
-            )
-
-            full_prompt = "\n\n".join(prompt_parts)
-
-            # Use DSPy's LM directly to generate structured output
-            # DSPy is configured globally before optimization starts, so we can use it directly
-            # Create a prompt that asks for JSON output
-            json_prompt = f"{full_prompt}\n\nReturn only valid JSON, no other text."
-
-            # For vision models, we need to pass images in the prompt
-            # DSPy's LM can handle images if we format them as data URLs
-            if images:
-                # Format images as data URLs for vision models
-                image_data_urls = [
-                    f"data:image/png;base64,{img}" for img in images
-                ]
-                # Add images to the prompt context
-                # Note: DSPy's ChainOfThought may need special handling for images
-                # For now, we'll include them in the prompt text
-                image_context = "\n".join(
-                    [
-                        f"Image {i+1} (base64): {url[:100]}..."
-                        for i, url in enumerate(image_data_urls)
-                    ]
-                )
-                json_prompt = f"{json_prompt}\n\n{image_context}"
-
-            # Use DSPy's ChainOfThought for extraction
-            # This will use the globally configured LM from dspy.settings
-            # If we have dspy.Image objects, we can pass them directly to the signature
-            if dspy_images and len(dspy_images) > 0:
-                # For vision models, create a signature that accepts images
-                # DSPy can handle Image objects directly in signatures
-                # For multiple images, pass them as a list or use the first one
-                if len(dspy_images) == 1:
-                    signature = "prompt, image -> json_output"
-                    extractor = dspy.ChainOfThought(signature)
-                    result = extractor(prompt=json_prompt, image=dspy_images[0])
-                else:
-                    # For multiple images, pass as a list
-                    # Note: DSPy may handle this differently depending on the LM
-                    signature = "prompt, images -> json_output"
-                    extractor = dspy.ChainOfThought(signature)
-                    result = extractor(prompt=json_prompt, images=dspy_images)
-            else:
-                signature = "prompt -> json_output"
-                extractor = dspy.ChainOfThought(signature)
-                result = extractor(prompt=json_prompt)
-
-            # Extract output text
-            if hasattr(result, "json_output"):
-                output_text = str(result.json_output)
-            else:
-                output_text = str(result)
-
-            # Try to parse JSON directly
-            extracted_data = None
-            try:
-                extracted_data = json.loads(output_text)
-            except (json.JSONDecodeError, AttributeError):
-                # Try to extract JSON from the text using regex (handles nested objects)
-                # Match JSON objects including nested ones
-                json_pattern = r"\{(?:[^{}]|(?:\{[^{}]*\}))*\}"
-                json_match = re.search(json_pattern, output_text, re.DOTALL)
-                if json_match:
-                    try:
-                        extracted_data = json.loads(json_match.group())
-                    except json.JSONDecodeError:
-                        # Try a more permissive pattern
-                        json_match = re.search(r"\{.*\}", output_text, re.DOTALL)
-                        if json_match:
-                            try:
-                                extracted_data = json.loads(json_match.group())
-                            except json.JSONDecodeError:
-                                pass
-
-            # If still no JSON found, return low score
-            if extracted_data is None:
-                return 0.0
-
-            # Calculate accuracy score
-            if not isinstance(extracted_data, dict):
-                return 0.0
-
-            # Handle None expected_output: use judge instead of comparison
-            expected = example.expected_output
-            if expected is None:
-                # Check if original evaluate_fn is a custom judge callable
-                original_eval_fn = self.evaluate_fn
-                if (
-                    callable(original_eval_fn)
-                    and not isinstance(original_eval_fn, str)
-                    and not isinstance(original_eval_fn, dspy.LM)
-                ):
-                    # Try calling as judge function (with extracted_data)
-                    # Cast to Any to handle different function signatures
-                    judge_fn = cast(Any, original_eval_fn)
-                    try:
-                        return judge_fn(
-                            example,
-                            extracted_data,
-                            optimized_descriptions,
-                            optimized_system_prompt,
-                            optimized_instruction_prompt,
-                        )
-                    except TypeError:
-                        # Fallback: try with old signature (without extracted_data)
-                        # This handles backward compatibility
-                        return judge_fn(
-                            example,
-                            optimized_descriptions,
-                            optimized_system_prompt,
-                            optimized_instruction_prompt,
-                        )
-                # Use judge_lm if provided, otherwise use default LM judge
-                judge_to_use = judge_lm if judge_lm is not None else lm
-                return self._default_judge_fn(
-                    judge_to_use,
-                    example,
-                    extracted_data,
-                    optimized_descriptions,
-                    optimized_system_prompt,
-                    optimized_instruction_prompt,
-                )
-
-            # Compare extracted data with expected output (existing logic)
-            if isinstance(expected, BaseModel):
-                expected = expected.model_dump()
-
-            # Levenshtein distance function
-            def levenshtein_distance(s1: str, s2: str) -> int:
-                """Calculate Levenshtein distance between two strings."""
-                if len(s1) < len(s2):
-                    return levenshtein_distance(s2, s1)
-
-                if len(s2) == 0:
-                    return len(s1)
-
-                previous_row = list(range(len(s2) + 1))
-                for i, c1 in enumerate(s1):
-                    current_row = [i + 1]
-                    for j, c2 in enumerate(s2):
-                        insertions = previous_row[j + 1] + 1
-                        deletions = current_row[j] + 1
-                        substitutions = previous_row[j] + (c1 != c2)
-                        current_row.append(min(insertions, deletions, substitutions))
-                    previous_row = current_row
-
-                return previous_row[-1]
-
-            # Recursive comparison function
-            def compare_dicts(
-                extracted: dict[str, Any], expected: dict[str, Any]
-            ) -> float:
-                """Compare extracted dict with expected dict recursively."""
-                if not isinstance(extracted, dict) or not isinstance(expected, dict):
-                    if metric == "exact":
-                        return 1.0 if extracted == expected else 0.0
-                    else:  # levenshtein
-                        str_extracted = str(extracted).strip()
-                        str_expected = str(expected).strip()
-                        if str_extracted == str_expected:
-                            return 1.0
-                        max_len = max(len(str_extracted), len(str_expected))
-                        if max_len == 0:
-                            return 1.0
-                        distance = levenshtein_distance(str_extracted, str_expected)
-                        similarity = 1.0 - (distance / max_len)
-                        return max(0.0, similarity)
-
-                total_fields = 0
-                field_scores = []
-
-                for key, expected_value in expected.items():
-                    total_fields += 1
-                    if key in extracted:
-                        extracted_value = extracted[key]
-                        if isinstance(expected_value, dict) and isinstance(
-                            extracted_value, dict
-                        ):
-                            # Recursive comparison for nested dicts
-                            nested_score = compare_dicts(extracted_value, expected_value)
-                            field_scores.append(nested_score)
-                        else:
-                            # Compare values based on metric
-                            str_extracted = str(extracted_value).strip()
-                            str_expected = str(expected_value).strip()
-
-                            if metric == "exact":
-                                field_score = 1.0 if str_extracted == str_expected else 0.0
-                            else:  # levenshtein
-                                if str_extracted == str_expected:
-                                    field_score = 1.0
-                                else:
-                                    max_len = max(len(str_extracted), len(str_expected))
-                                    if max_len == 0:
-                                        field_score = 1.0
-                                    else:
-                                        distance = levenshtein_distance(
-                                            str_extracted, str_expected
-                                        )
-                                        similarity = 1.0 - (distance / max_len)
-                                        field_score = max(0.0, similarity)
-                            field_scores.append(field_score)
-                    else:
-                        # Field missing
-                        field_scores.append(0.0)
-
-                # Return average score across all fields
-                return (
-                    sum(field_scores) / total_fields if total_fields > 0 else 0.0
-                )
-
-            score = compare_dicts(extracted_data, expected)
-            return max(0.0, min(1.0, score))  # Ensure score is between 0.0 and 1.0
-
-        return evaluate
-
-    def _default_judge_fn(
-        self,
-        lm: dspy.LM,
-        example: Example,
-        extracted_data: dict[str, Any],
-        optimized_descriptions: dict[str, str],
-        optimized_system_prompt: str | None,
-        optimized_instruction_prompt: str | None,
-    ) -> float:
-        """Default LLM judge function that evaluates extracted data quality.
+    def _show_loading_window(
+        self, evaluation_num: int | None = None, total_evaluations: int | None = None
+    ) -> None:
+        """Show a loading window while processing the next evaluation.
 
         Args:
-            lm: The DSPy language model to use for judging.
-            example: The example with input_data.
-            extracted_data: The extracted structured data to evaluate.
-            optimized_descriptions: Dictionary of optimized field descriptions.
-            optimized_system_prompt: Optimized system prompt (if provided).
-            optimized_instruction_prompt: Optimized instruction prompt (if provided).
+            evaluation_num: Current evaluation number (1-based).
+            total_evaluations: Total number of evaluations.
+        """
+        self._hitl_manager.show_loading_window(evaluation_num, total_evaluations)
+
+    def _close_loading_window(self) -> None:
+        """Close the loading window if it exists."""
+        self._hitl_manager.close_loading_window()
+
+    def _show_hitl_popup(
+        self,
+        input_text: str | None,
+        images: list[str] | None,
+        proposed_output: dict[str, Any],
+        evaluation_num: int | None = None,
+        total_evaluations: int | None = None,
+    ) -> tuple[dict[str, Any], bool]:
+        """Show a GUI popup for human-in-the-loop evaluation.
+
+        Reuses the same window across evaluations, updating content in place.
+
+        Args:
+            input_text: Input text to display.
+            images: List of base64-encoded images to display.
+            proposed_output: Proposed output JSON to display and allow editing.
+            evaluation_num: Current evaluation number (1-based).
+            total_evaluations: Total number of evaluations.
 
         Returns:
-            Score between 0.0 and 1.0 based on LLM judge evaluation.
+            Tuple of (edited_output, was_edited) where edited_output is the final JSON
+            and was_edited indicates if the user made changes.
         """
-        import json
-
-        # Get input data from example
-        input_data = example.input_data
-        if isinstance(input_data, BaseModel):
-            input_data = input_data.model_dump()
-
-        # Extract text and images from input_data
-        input_text: str | None = None
-        images: list[str] | None = None
-
-        if isinstance(input_data, dict):
-            input_text = input_data.get("text")
-            images = input_data.get("images")
-            if not input_text and images:
-                input_text = "Extract structured data from the provided image(s)."
-            elif not input_text:
-                input_text = str(input_data)
-        else:
-            input_text = str(input_data)
-
-        # Build judge prompt
-        system_prompt = optimized_system_prompt or self.system_prompt or ""
-        instruction_prompt = optimized_instruction_prompt or self.instruction_prompt or ""
-
-        # Get model schema for context
-        modified_schema = apply_optimized_descriptions(self.model, optimized_descriptions)
-
-        judge_prompt_parts = []
-        if system_prompt:
-            judge_prompt_parts.append(f"System: {system_prompt}")
-        if instruction_prompt:
-            judge_prompt_parts.append(f"Instruction: {instruction_prompt}")
-
-        judge_prompt_parts.append(
-            f"\nJSON Schema (expected structure):\n{json.dumps(modified_schema, indent=2)}"
+        return self._hitl_manager.show_hitl_popup(
+            input_text=input_text,
+            images=images,
+            proposed_output=proposed_output,
+            evaluation_num=evaluation_num,
+            total_evaluations=total_evaluations,
         )
 
-        if input_text:
-            judge_prompt_parts.append(f"\nInput text: {input_text}")
-        if images:
-            judge_prompt_parts.append(f"\nInput images: {len(images)} image(s) provided")
+    def _close_hitl_window(self) -> None:
+        """Close the HITL window if it exists."""
+        self._hitl_manager.close_hitl_window()
 
-        judge_prompt_parts.append(f"\nExtracted data:\n{json.dumps(extracted_data, indent=2)}")
+    def _hitl_evaluate_fn(
+        self, lm: dspy.LM, metric: str = "exact"
+    ) -> Callable[[Example, dict[str, str], str | None, str | None], float]:
+        """Create a human-in-the-loop evaluation function.
 
-        judge_prompt_parts.append(
-            "\nEvaluate the quality of the extracted data. Consider:\n"
-            "- Does it match the expected JSON schema structure?\n"
-            "- Are the field values reasonable and accurate?\n"
-            "- Is the data complete?\n"
-            "- Are there any obvious errors or inconsistencies?\n\n"
-            "Respond with a JSON object containing a 'score' field (float between 0.0 and 1.0) "
-            "and optionally a 'reasoning' field explaining your evaluation."
-        )
+        Delegates to HitlManager.
 
-        judge_prompt = "\n\n".join(judge_prompt_parts)
+        Args:
+            lm: The DSPy language model to use for extraction.
+            metric: Comparison metric to use. Options:
+                - "exact-hitl": Score is 0 if edited, 1 if not edited
+                - "levenshtein-hitl": Score is Levenshtein distance if edited, 1 if not edited
 
-        # Use DSPy's ChainOfThought to get judge evaluation
-        signature = "prompt -> evaluation"
-        judge = dspy.ChainOfThought(signature)
-        result = judge(prompt=judge_prompt)
-
-        # Extract evaluation from result
-        evaluation_text = str(result.evaluation) if hasattr(result, "evaluation") else str(result)
-
-        # Try to parse JSON from evaluation
-        try:
-            evaluation = json.loads(evaluation_text)
-            score = float(evaluation.get("score", 0.5))
-        except (json.JSONDecodeError, ValueError, AttributeError):
-            # Try to extract score from text using regex
-            import re
-
-            score_match = re.search(r'"score"\s*:\s*([0-9.]+)', evaluation_text)
-            if score_match:
-                try:
-                    score = float(score_match.group(1))
-                except ValueError:
-                    score = 0.5
-            else:
-                # Fallback: try to find a number between 0 and 1
-                score_match = re.search(r"\b(0\.\d+|1\.0|1)\b", evaluation_text)
-                if score_match:
-                    try:
-                        score = float(score_match.group(1))
-                    except ValueError:
-                        score = 0.5
-                else:
-                    score = 0.5
-
-        return max(0.0, min(1.0, score))  # Ensure score is between 0.0 and 1.0
+        Returns:
+            An evaluation function that shows a GUI popup for human review.
+        """
+        return self._hitl_manager.create_hitl_evaluate_fn(lm, metric)
 
     def _create_metric_function(self, lm: dspy.LM) -> Callable[..., float]:
         """Create a metric function for DSPy optimization.
@@ -813,13 +495,18 @@ class PydanticOptimizer:
         if evaluate_fn is None:
             evaluate_fn = self._default_evaluate_fn(lm)
         elif isinstance(evaluate_fn, str):
-            # Handle string metrics: "exact" or "levenshtein"
-            if evaluate_fn.lower() not in ("exact", "levenshtein"):
+            # Handle string metrics: "exact", "levenshtein", "exact-hitl", or "levenshtein-hitl"
+            evaluate_fn_lower = evaluate_fn.lower()
+            if evaluate_fn_lower in ("exact", "levenshtein"):
+                evaluate_fn = self._default_evaluate_fn(lm, metric=evaluate_fn_lower)
+            elif evaluate_fn_lower in ("exact-hitl", "levenshtein-hitl"):
+                evaluate_fn = self._hitl_evaluate_fn(lm, metric=evaluate_fn_lower)
+            else:
+                valid_options = '"exact", "levenshtein", "exact-hitl", "levenshtein-hitl"'
                 raise ValueError(
                     f"evaluate_fn must be a callable, dspy.LM, None, or "
-                    f'one of ("exact", "levenshtein"), got "{evaluate_fn}"'
+                    f'one of ({valid_options}), got "{evaluate_fn}"'
                 )
-            evaluate_fn = self._default_evaluate_fn(lm, metric=evaluate_fn.lower())
         elif isinstance(evaluate_fn, dspy.LM):
             # If evaluate_fn is a dspy.LM, use it as judge when expected_output is None
             judge_lm = evaluate_fn
@@ -1153,13 +840,18 @@ class PydanticOptimizer:
         if evaluate_fn_raw is None:
             evaluate_fn = self._default_evaluate_fn(lm)
         elif isinstance(evaluate_fn_raw, str):
-            # Handle string metrics: "exact" or "levenshtein"
-            if evaluate_fn_raw.lower() not in ("exact", "levenshtein"):
+            # Handle string metrics: "exact", "levenshtein", "exact-hitl", or "levenshtein-hitl"
+            evaluate_fn_lower = evaluate_fn_raw.lower()
+            if evaluate_fn_lower in ("exact", "levenshtein"):
+                evaluate_fn = self._default_evaluate_fn(lm, metric=evaluate_fn_lower)
+            elif evaluate_fn_lower in ("exact-hitl", "levenshtein-hitl"):
+                evaluate_fn = self._hitl_evaluate_fn(lm, metric=evaluate_fn_lower)
+            else:
+                valid_options = '"exact", "levenshtein", "exact-hitl", "levenshtein-hitl"'
                 raise ValueError(
                     f"evaluate_fn must be a callable, dspy.LM, None, or "
-                    f'one of ("exact", "levenshtein"), got "{evaluate_fn_raw}"'
+                    f'one of ({valid_options}), got "{evaluate_fn_raw}"'
                 )
-            evaluate_fn = self._default_evaluate_fn(lm, metric=evaluate_fn_raw.lower())
         elif isinstance(evaluate_fn_raw, dspy.LM):
             # If evaluate_fn is a dspy.LM, use it as judge when expected_output is None
             judge_lm = evaluate_fn_raw
@@ -1200,17 +892,19 @@ class PydanticOptimizer:
             if self.verbose:
                 print(f"Using custom optimizer: {type(optimizer).__name__}")
         elif self.optimizer_type == "miprov2zeroshot":
+            # Special case: MIPROv2 with zero-shot settings
             default_kwargs = {
                 "metric": metric,
                 "num_threads": self.num_threads,
                 "init_temperature": self.init_temperature,
                 "auto": "light",
-                "max_bootstrapped_demos": 0,  # No few-shot examples
-                "max_labeled_demos": 0,  # No labeled examples
+                "max_bootstrapped_demos": 0,
+                "max_labeled_demos": 0,
             }
             merged_kwargs = {**default_kwargs, **self.optimizer_kwargs}
             optimizer = MIPROv2(**merged_kwargs)
         elif self.optimizer_type == "miprov2":
+            # Special case: MIPROv2 with default settings
             default_kwargs = {
                 "metric": metric,
                 "num_threads": self.num_threads,
@@ -1219,61 +913,21 @@ class PydanticOptimizer:
             }
             merged_kwargs = {**default_kwargs, **self.optimizer_kwargs}
             optimizer = MIPROv2(**merged_kwargs)
-        elif self.optimizer_type == "gepa":
-            default_kwargs = {
-                "metric": metric,
-                "num_threads": self.num_threads,
-                "init_temperature": self.init_temperature,
-            }
-            merged_kwargs = {**default_kwargs, **self.optimizer_kwargs}
-            optimizer = GEPA(**merged_kwargs)
-        elif self.optimizer_type == "bootstrapfewshot":
-            default_kwargs = {
-                "metric": metric,
-                "max_bootstrapped_demos": 4,
-                "max_labeled_demos": 16,
-            }
-            merged_kwargs = {**default_kwargs, **self.optimizer_kwargs}
-            optimizer = BootstrapFewShot(**merged_kwargs)
-        elif self.optimizer_type == "bootstrapfewshotwithrandomsearch":
-            default_kwargs = {
-                "metric": metric,
-                "max_bootstrapped_demos": 4,
-                "max_labeled_demos": 16,
-                "num_candidate_programs": 10,
-            }
-            merged_kwargs = {**default_kwargs, **self.optimizer_kwargs}
-            optimizer = BootstrapFewShotWithRandomSearch(**merged_kwargs)
-        elif self.optimizer_type == "knnfewshot":
-            default_kwargs = {
-                "metric": metric,
-                "K": 4,
-            }
-            merged_kwargs = {**default_kwargs, **self.optimizer_kwargs}
-            optimizer = KNNFewShot(**merged_kwargs)
-        elif self.optimizer_type == "labeledfewshot":
-            default_kwargs = {
-                "metric": metric,
-                "max_labeled_demos": 16,
-            }
-            merged_kwargs = {**default_kwargs, **self.optimizer_kwargs}
-            optimizer = LabeledFewShot(**merged_kwargs)
-        elif self.optimizer_type == "copro":
-            default_kwargs = {
-                "metric": metric,
-                "num_threads": self.num_threads,
-            }
-            merged_kwargs = {**default_kwargs, **self.optimizer_kwargs}
-            optimizer = COPRO(**merged_kwargs)
-        elif self.optimizer_type == "simba":
-            default_kwargs = {
-                "metric": metric,
-                "num_threads": self.num_threads,
-            }
-            merged_kwargs = {**default_kwargs, **self.optimizer_kwargs}
-            optimizer = SIMBA(**merged_kwargs)
         else:
-            raise ValueError(f"Unknown optimizer_type: {self.optimizer_type}")
+            # Get optimizer class from Teleprompter subclasses
+            teleprompter_classes = self._get_teleprompter_subclasses()
+            if self.optimizer_type not in teleprompter_classes:
+                valid_optimizers = sorted(teleprompter_classes.keys())
+                raise ValueError(
+                    f"Unknown optimizer_type: {self.optimizer_type}. "
+                    f"Valid options: {valid_optimizers}"
+                )
+
+            optimizer_class = teleprompter_classes[self.optimizer_type]
+            # Use default kwargs (just metric) and merge with user-provided kwargs
+            default_kwargs = {"metric": metric}
+            merged_kwargs = {**default_kwargs, **self.optimizer_kwargs}
+            optimizer = optimizer_class(**merged_kwargs)
 
         # Evaluate baseline (original prompts and descriptions) on validation set
         if self.verbose:
@@ -1481,6 +1135,9 @@ class PydanticOptimizer:
             else:
                 print("No change in performance.")
             print(f"{'='*60}\n")
+
+        # Close HITL window if it exists (optimization complete)
+        self._close_hitl_window()
 
         return result
 

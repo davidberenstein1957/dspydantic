@@ -51,10 +51,6 @@ for field, description in result.optimized_descriptions.items():
 
 # Create optimized model with updated descriptions
 OptimizedUser = create_optimized_model(User, result.optimized_descriptions)
-
-# Use the optimized model directly
-user = OptimizedUser(name="John Doe", age=30, email="john@example.com")
-print(f"Model schema: {OptimizedUser.model_json_schema()}")
 ```
 
 ## Installation
@@ -346,7 +342,7 @@ result = optimizer.optimize()
 
 - If `evaluate_fn` is a `dspy.LM`, it will be used as the judge
 - If `evaluate_fn` is a callable, it will be treated as a judge function (with `extracted_data` parameter)
-- If `evaluate_fn` is `None` or a string ("exact", "levenshtein"), the default LLM judge will be used
+- If `evaluate_fn` is `None` or a string ("exact", "levenshtein", "exact-hitl", "levenshtein-hitl"), the default LLM judge will be used
 
 ## Optimizing Prompts
 
@@ -409,12 +405,14 @@ Instead of writing a custom evaluation function, you can use built-in options:
 
 - `"exact"`: Exact matching between extracted and expected values
 - `"levenshtein"`: Fuzzy matching using Levenshtein distance
+- `"exact-hitl"`: Human-in-the-loop exact evaluation (shows GUI popup)
+- `"levenshtein-hitl"`: Human-in-the-loop Levenshtein evaluation (shows GUI popup)
 
 ```python
 optimizer = PydanticOptimizer(
     model=User,
     examples=examples,
-    evaluate_fn="exact",  # or "levenshtein"
+    evaluate_fn="exact",  # or "levenshtein", "exact-hitl", "levenshtein-hitl", `dspy.LM` instance, a callable object, or None
     model_id="gpt-4o"
 )
 ```
@@ -509,7 +507,7 @@ Main optimizer class.
 
 - `model` (type[BaseModel]): The Pydantic model class to optimize
 - `examples` (list[Example]): List of examples for optimization
-- `evaluate_fn` (Callable | dspy.LM | str | None): Evaluation function, built-in option ("exact", "levenshtein"), or dspy.LM instance.
+- `evaluate_fn` (Callable | dspy.LM | str | None): Evaluation function, built-in option ("exact", "levenshtein", "exact-hitl", "levenshtein-hitl"), or dspy.LM instance.
   - When `expected_output` is provided: Can be a callable `(Example, dict[str, str], str | None, str | None) -> float`,
     a string ("exact" or "levenshtein"), or None (uses default evaluation).
   - When `expected_output` is None: Can be a `dspy.LM` instance (used as judge), a callable judge function
@@ -590,69 +588,41 @@ Example(
 
 ### `create_optimized_model(model, optimized_descriptions)`
 
-Create a new Pydantic model class with optimized field descriptions applied directly to Field definitions. This is the recommended way to use optimized descriptions.
+**Recommended:** Create a new Pydantic model class with optimized descriptions.
 
 **Parameters:**
 
-- `model` (type[BaseModel]): The original Pydantic model class
-- `optimized_descriptions` (dict[str, str]): Dictionary mapping field paths to optimized descriptions
+- `model` (type[BaseModel]): Your original Pydantic model
+- `optimized_descriptions` (dict[str, str]): From `result.optimized_descriptions`
 
 **Returns:**
 
-- `type[BaseModel]`: A new Pydantic model class with optimized descriptions in Field definitions
+- `type[BaseModel]`: New model class with optimized descriptions in Field definitions
 
 **Example:**
 
 ```python
 from dspydantic import create_optimized_model
 
-# Create optimized model class
+# Create optimized model
 OptimizedInvoice = create_optimized_model(Invoice, result.optimized_descriptions)
 
-# Use the optimized model directly - it works exactly like the original
-# but with optimized descriptions embedded in Field definitions
-invoice = OptimizedInvoice(
-    invoice_number="INV-2024-001",
-    total_amount=1234.56,
-    date="2024-01-15"
-)
-
-# Get JSON schema with optimized descriptions
-optimized_schema = OptimizedInvoice.model_json_schema()
-
 # Use with OpenAI structured outputs
-# Include optimized prompts if available
-messages = []
-if result.optimized_system_prompt:
-    messages.append({"role": "system", "content": result.optimized_system_prompt})
-
-user_content = "Extract invoice data..."
-if result.optimized_instruction_prompt:
-    user_content = f"{result.optimized_instruction_prompt}\n\n{user_content}"
-messages.append({"role": "user", "content": user_content})
-
 response = client.chat.completions.create(
     model="gpt-4o",
     messages=messages,
-    response_format={
-        "type": "json_schema",
-        "json_schema": {
-            "name": OptimizedInvoice.__name__,
-            "schema": optimized_schema,
-            "strict": True
-        }
-    }
+    response_format=OptimizedInvoice
 )
 ```
 
 ### `apply_optimized_descriptions(model, optimized_descriptions)`
 
-Create a JSON schema dictionary with optimized field descriptions. Useful for one-off schema generation without creating a new model class.
+Get optimized JSON schema without creating a new model class. Useful for one-off schema generation.
 
 **Parameters:**
 
-- `model` (type[BaseModel]): The original Pydantic model class
-- `optimized_descriptions` (dict[str, str]): Dictionary mapping field paths to optimized descriptions
+- `model` (type[BaseModel]): Your original Pydantic model
+- `optimized_descriptions` (dict[str, str]): From `result.optimized_descriptions`
 
 **Returns:**
 
@@ -663,31 +633,14 @@ Create a JSON schema dictionary with optimized field descriptions. Useful for on
 ```python
 from dspydantic import apply_optimized_descriptions
 
-# Get optimized schema without creating a new model class
+# Get optimized schema directly
 optimized_schema = apply_optimized_descriptions(Invoice, result.optimized_descriptions)
 
 # Use with OpenAI
-# Include optimized prompts if available
-messages = []
-if result.optimized_system_prompt:
-    messages.append({"role": "system", "content": result.optimized_system_prompt})
-
-user_content = "Extract invoice data..."
-if result.optimized_instruction_prompt:
-    user_content = f"{result.optimized_instruction_prompt}\n\n{user_content}"
-messages.append({"role": "user", "content": user_content})
-
 response = client.chat.completions.create(
     model="gpt-4o",
     messages=messages,
-    response_format={
-        "type": "json_schema",
-        "json_schema": {
-            "name": Invoice.__name__,
-            "schema": optimized_schema,
-            "strict": True
-        }
-    }
+    response_format={"type": "json_schema", "json_schema": {"schema": optimized_schema}}
 )
 ```
 
