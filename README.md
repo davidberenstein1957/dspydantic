@@ -1,24 +1,26 @@
-# DSPydantic
+# 🚀 DSPydantic: Auto-Optimize Your Pydantic Models with DSPy
 
 Automatically optimize Pydantic model field descriptions and prompts using DSPy. Get better structured data extraction from LLMs with less manual tuning.
 
-## What is DSPydantic?
+DSPydantic automatically optimizes your Pydantic model field descriptions and prompts using DSPy, so you can extract better structured data from LLMs with zero manual tuning.
 
-When building LLM applications that extract structured data, getting the right field descriptions and prompts is crucial. Instead of manually tweaking descriptions, `dspydantic` uses DSPy to automatically find the best descriptions and prompts based on your examples.
+## ✨ What It Does
 
-## Quick Start
+Instead of spending hours crafting the perfect field descriptions for your Pydantic models, DSPydantic uses DSPy's optimization algorithms to automatically find the best descriptions based on your examples. Just provide a few examples, and watch your extraction accuracy improve.
+
+## 🎯 Quick Start
 
 ```python
 from pydantic import BaseModel, Field
 from dspydantic import PydanticOptimizer, Example, create_optimized_model
 
-# Define your Pydantic model
+# Define your model
 class User(BaseModel):
     name: str = Field(description="User name")
     age: int = Field(description="User age")
     email: str = Field(description="Email address")
 
-# Provide examples with text input and expected Pydantic models
+# Provide examples
 examples = [
     Example(
         text="John Doe, 30 years old, john@example.com",
@@ -30,16 +32,12 @@ examples = [
     ),
 ]
 
-# Optimize field descriptions
-# Optimizer is auto-selected based on dataset size (< 20 examples uses BootstrapFewShot,
-# >= 20 examples uses BootstrapFewShotWithRandomSearch)
-# You can also specify: optimizer="miprov2" or pass a custom Teleprompter instance
+# Optimize!
 optimizer = PydanticOptimizer(
     model=User,
     examples=examples,
-    evaluate_fn="exact",  # Built-in exact matching
+    evaluate_fn="exact",
     model_id="gpt-4o",
-    api_key="your-api-key",  # Or set OPENAI_API_KEY env var
 )
 
 result = optimizer.optimize()
@@ -53,17 +51,36 @@ for field, description in result.optimized_descriptions.items():
 OptimizedUser = create_optimized_model(User, result.optimized_descriptions)
 ```
 
-## Installation
+## 📦 Installation
 
 ```bash
 pip install dspydantic
 ```
 
-Or using `uv`:
+Or with `uv`:
 
 ```bash
 uv pip install dspydantic
 ```
+
+## 🌟 Key Features
+
+- **Auto-optimization**: Automatically finds the best field descriptions using DSPy
+- **Multiple input types**: Works with text, images, and PDFs
+- **Built-in evaluation**: Exact matching, Levenshtein distance, or custom evaluators
+- **LLM judge support**: Evaluate without ground truth using LLM-as-judge
+- **Prompt optimization**: Optimize system and instruction prompts too
+- **Nested models**: Automatically handles complex nested Pydantic models
+- **Smart optimizer selection**: Auto-selects the best DSPy optimizer for your dataset size
+
+## 📚 Examples
+
+Check out the [examples directory](examples/) for complete working examples:
+
+- **[Text extraction](examples/text_example.py)**: Extract structured data from veterinary EHR text
+- **[Image classification](examples/image_example.py)**: Classify handwritten digits from images
+- **[Sentiment analysis](examples/imdb_example.py)**: Classify movie review sentiment
+- **[Human-in-the-loop](examples/hitl_example.py)**: Interactive evaluation with GUI
 
 ## Basic Usage
 
@@ -80,28 +97,20 @@ class Invoice(BaseModel):
 
 ### 2. Create Examples
 
-Use plain text and Pydantic model instances:
+Use plain text, images, PDFs, and Pydantic model instances:
 
 ```python
 from dspydantic import Example
 
 examples = [
     Example(
-        text="Invoice #INV-2024-001, Total: $1,234.56, Date: 2024-01-15",
+        text="my invoice text", # invoice.png, invoice.pdf
         expected_output=Invoice(
             invoice_number="INV-2024-001",
             total_amount=1234.56,
             date="2024-01-15"
         )
-    ),
-    Example(
-        text="Invoice #INV-2024-002, Total: $567.89, Date: 2024-01-20",
-        expected_output=Invoice(
-            invoice_number="INV-2024-002",
-            total_amount=567.89,
-            date="2024-01-20"
-        )
-    ),
+    )
 ]
 ```
 
