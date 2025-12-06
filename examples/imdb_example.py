@@ -107,7 +107,7 @@ def main():
         examples=examples,
         model_id="gpt-4o-mini",  # Will use OPENAI_API_KEY from environment
         verbose=True,
-        optimizer_type="miprov2zeroshot",
+        optimizer="miprov2zeroshot",
         system_prompt=(
             "You are an expert sentiment analysis assistant specializing in movie review "
             "classification. You understand nuanced language, sarcasm, and contextual cues "

@@ -2,7 +2,7 @@
 
 import os
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 import dspy
 from dspy.teleprompt import (  # noqa: E402
@@ -126,6 +126,46 @@ class PydanticOptimizer:
             optimizer=custom_optimizer  # Pass your custom optimizer instance
         )
 
+        # Option 8: Use None expected_output with LLM judge
+        examples_without_expected = [
+            Example(
+                text="John Doe, 30 years old",
+                expected_output=None  # No expected output, uses LLM judge
+            )
+        ]
+        optimizer = PydanticOptimizer(
+            model=User,
+            examples=examples_without_expected,
+            model_id="gpt-4o",
+            api_key="your-key"
+        )
+
+        # Option 9: Use None expected_output with custom judge LM
+        import dspy
+        judge_lm = dspy.LM("gpt-4o", api_key="your-key")
+        optimizer = PydanticOptimizer(
+            model=User,
+            examples=examples_without_expected,
+            evaluate_fn=judge_lm,  # Pass dspy.LM as evaluate_fn
+            model_id="gpt-4o",
+            api_key="your-key"
+        )
+
+        # Option 10: Use None expected_output with custom judge function
+        def custom_judge(example, extracted_data, optimized_descriptions,
+                        optimized_system_prompt, optimized_instruction_prompt):
+            # Your custom evaluation logic here
+            # Return a score between 0.0 and 1.0
+            return 0.85
+
+        optimizer = PydanticOptimizer(
+            model=User,
+            examples=examples_without_expected,
+            evaluate_fn=custom_judge,  # Pass custom judge function as evaluate_fn
+            model_id="gpt-4o",
+            api_key="your-key"
+        )
+
         # Optimize
         result = optimizer.optimize()
         print(result.optimized_descriptions)
@@ -137,6 +177,8 @@ class PydanticOptimizer:
         model: type[BaseModel],
         examples: list[Example],
         evaluate_fn: Callable[[Example, dict[str, str], str | None, str | None], float]
+        | Callable[[Example, dict[str, Any], dict[str, str], str | None, str | None], float]
+        | dspy.LM
         | str
         | None = None,
         system_prompt: str | None = None,
@@ -159,11 +201,18 @@ class PydanticOptimizer:
             model: The Pydantic model class to optimize.
             examples: List of examples to use for optimization.
             evaluate_fn: Optional function that evaluates the quality of optimized prompts.
-                Takes (Example, optimized_descriptions dict, optimized_system_prompt,
-                optimized_instruction_prompt), returns a float score (0.0-1.0).
-                Can also be a string: "exact" for exact matching, "levenshtein" for
-                Levenshtein distance-based matching, or None for default evaluation
-                that performs structured extraction with the same LLM used for optimization.
+                When expected_output is provided:
+                    - Takes (Example, optimized_descriptions dict, optimized_system_prompt,
+                      optimized_instruction_prompt), returns a float score (0.0-1.0).
+                    - Can also be a string: "exact" for exact matching, "levenshtein" for
+                      Levenshtein distance-based matching, or None for default evaluation
+                      that performs structured extraction with the same LLM used for optimization.
+                When expected_output is None:
+                    - Can be a dspy.LM instance to use as a judge
+                    - Can be a callable that takes (Example, extracted_data dict,
+                      optimized_descriptions dict, optimized_system_prompt,
+                      optimized_instruction_prompt) and returns a float score (0.0-1.0)
+                    - If None, uses the default LLM judge (same LM as optimization)
             system_prompt: Optional initial system prompt to optimize.
             instruction_prompt: Optional initial instruction prompt to optimize.
             lm: Optional DSPy language model instance. If provided, this will be used
@@ -311,10 +360,8 @@ class PydanticOptimizer:
             return "bootstrapfewshotwithrandomsearch"
 
     def _default_evaluate_fn(
-        self, lm: dspy.LM, metric: str = "exact"
-    ) -> Callable[
-        [Example, dict[str, str], str | None, str | None], float
-    ]:
+        self, lm: dspy.LM, metric: str = "exact", judge_lm: dspy.LM | None = None
+    ) -> Callable[[Example, dict[str, str], str | None, str | None], float]:
         """Create a default evaluation function that uses the LLM for structured extraction.
 
         Args:
@@ -322,10 +369,11 @@ class PydanticOptimizer:
             metric: Comparison metric to use. Options:
                 - "exact": Exact string matching (default)
                 - "levenshtein": Levenshtein distance-based matching
+            judge_lm: Optional separate LM to use as judge when expected_output is None.
 
         Returns:
             An evaluation function that performs structured extraction and compares
-            with expected output.
+            with expected output (or uses judge if expected_output is None).
         """
 
         def evaluate(
@@ -497,14 +545,54 @@ class PydanticOptimizer:
             if extracted_data is None:
                 return 0.0
 
-            # Compare extracted data with expected output
-            expected = example.expected_output
-            if isinstance(expected, BaseModel):
-                expected = expected.model_dump()
-
             # Calculate accuracy score
             if not isinstance(extracted_data, dict):
                 return 0.0
+
+            # Handle None expected_output: use judge instead of comparison
+            expected = example.expected_output
+            if expected is None:
+                # Check if original evaluate_fn is a custom judge callable
+                original_eval_fn = self.evaluate_fn
+                if (
+                    callable(original_eval_fn)
+                    and not isinstance(original_eval_fn, str)
+                    and not isinstance(original_eval_fn, dspy.LM)
+                ):
+                    # Try calling as judge function (with extracted_data)
+                    # Cast to Any to handle different function signatures
+                    judge_fn = cast(Any, original_eval_fn)
+                    try:
+                        return judge_fn(
+                            example,
+                            extracted_data,
+                            optimized_descriptions,
+                            optimized_system_prompt,
+                            optimized_instruction_prompt,
+                        )
+                    except TypeError:
+                        # Fallback: try with old signature (without extracted_data)
+                        # This handles backward compatibility
+                        return judge_fn(
+                            example,
+                            optimized_descriptions,
+                            optimized_system_prompt,
+                            optimized_instruction_prompt,
+                        )
+                # Use judge_lm if provided, otherwise use default LM judge
+                judge_to_use = judge_lm if judge_lm is not None else lm
+                return self._default_judge_fn(
+                    judge_to_use,
+                    example,
+                    extracted_data,
+                    optimized_descriptions,
+                    optimized_system_prompt,
+                    optimized_instruction_prompt,
+                )
+
+            # Compare extracted data with expected output (existing logic)
+            if isinstance(expected, BaseModel):
+                expected = expected.model_dump()
 
             # Levenshtein distance function
             def levenshtein_distance(s1: str, s2: str) -> int:
@@ -595,6 +683,120 @@ class PydanticOptimizer:
 
         return evaluate
 
+    def _default_judge_fn(
+        self,
+        lm: dspy.LM,
+        example: Example,
+        extracted_data: dict[str, Any],
+        optimized_descriptions: dict[str, str],
+        optimized_system_prompt: str | None,
+        optimized_instruction_prompt: str | None,
+    ) -> float:
+        """Default LLM judge function that evaluates extracted data quality.
+
+        Args:
+            lm: The DSPy language model to use for judging.
+            example: The example with input_data.
+            extracted_data: The extracted structured data to evaluate.
+            optimized_descriptions: Dictionary of optimized field descriptions.
+            optimized_system_prompt: Optimized system prompt (if provided).
+            optimized_instruction_prompt: Optimized instruction prompt (if provided).
+
+        Returns:
+            Score between 0.0 and 1.0 based on LLM judge evaluation.
+        """
+        import json
+
+        # Get input data from example
+        input_data = example.input_data
+        if isinstance(input_data, BaseModel):
+            input_data = input_data.model_dump()
+
+        # Extract text and images from input_data
+        input_text: str | None = None
+        images: list[str] | None = None
+
+        if isinstance(input_data, dict):
+            input_text = input_data.get("text")
+            images = input_data.get("images")
+            if not input_text and images:
+                input_text = "Extract structured data from the provided image(s)."
+            elif not input_text:
+                input_text = str(input_data)
+        else:
+            input_text = str(input_data)
+
+        # Build judge prompt
+        system_prompt = optimized_system_prompt or self.system_prompt or ""
+        instruction_prompt = optimized_instruction_prompt or self.instruction_prompt or ""
+
+        # Get model schema for context
+        modified_schema = apply_optimized_descriptions(self.model, optimized_descriptions)
+
+        judge_prompt_parts = []
+        if system_prompt:
+            judge_prompt_parts.append(f"System: {system_prompt}")
+        if instruction_prompt:
+            judge_prompt_parts.append(f"Instruction: {instruction_prompt}")
+
+        judge_prompt_parts.append(
+            f"\nJSON Schema (expected structure):\n{json.dumps(modified_schema, indent=2)}"
+        )
+
+        if input_text:
+            judge_prompt_parts.append(f"\nInput text: {input_text}")
+        if images:
+            judge_prompt_parts.append(f"\nInput images: {len(images)} image(s) provided")
+
+        judge_prompt_parts.append(f"\nExtracted data:\n{json.dumps(extracted_data, indent=2)}")
+
+        judge_prompt_parts.append(
+            "\nEvaluate the quality of the extracted data. Consider:\n"
+            "- Does it match the expected JSON schema structure?\n"
+            "- Are the field values reasonable and accurate?\n"
+            "- Is the data complete?\n"
+            "- Are there any obvious errors or inconsistencies?\n\n"
+            "Respond with a JSON object containing a 'score' field (float between 0.0 and 1.0) "
+            "and optionally a 'reasoning' field explaining your evaluation."
+        )
+
+        judge_prompt = "\n\n".join(judge_prompt_parts)
+
+        # Use DSPy's ChainOfThought to get judge evaluation
+        signature = "prompt -> evaluation"
+        judge = dspy.ChainOfThought(signature)
+        result = judge(prompt=judge_prompt)
+
+        # Extract evaluation from result
+        evaluation_text = str(result.evaluation) if hasattr(result, "evaluation") else str(result)
+
+        # Try to parse JSON from evaluation
+        try:
+            evaluation = json.loads(evaluation_text)
+            score = float(evaluation.get("score", 0.5))
+        except (json.JSONDecodeError, ValueError, AttributeError):
+            # Try to extract score from text using regex
+            import re
+
+            score_match = re.search(r'"score"\s*:\s*([0-9.]+)', evaluation_text)
+            if score_match:
+                try:
+                    score = float(score_match.group(1))
+                except ValueError:
+                    score = 0.5
+            else:
+                # Fallback: try to find a number between 0 and 1
+                score_match = re.search(r"\b(0\.\d+|1\.0|1)\b", evaluation_text)
+                if score_match:
+                    try:
+                        score = float(score_match.group(1))
+                    except ValueError:
+                        score = 0.5
+                else:
+                    score = 0.5
+
+        return max(0.0, min(1.0, score))  # Ensure score is between 0.0 and 1.0
+
     def _create_metric_function(self, lm: dspy.LM) -> Callable[..., float]:
         """Create a metric function for DSPy optimization.
 
@@ -606,16 +808,26 @@ class PydanticOptimizer:
         """
         # Use provided evaluate_fn or create default one
         evaluate_fn = self.evaluate_fn
+        judge_lm: dspy.LM | None = None
+
         if evaluate_fn is None:
             evaluate_fn = self._default_evaluate_fn(lm)
         elif isinstance(evaluate_fn, str):
             # Handle string metrics: "exact" or "levenshtein"
             if evaluate_fn.lower() not in ("exact", "levenshtein"):
                 raise ValueError(
-                    f'evaluate_fn must be a callable, None, or one of ("exact", "levenshtein"), '
-                    f'got "{evaluate_fn}"'
+                    f"evaluate_fn must be a callable, dspy.LM, None, or "
+                    f'one of ("exact", "levenshtein"), got "{evaluate_fn}"'
                 )
             evaluate_fn = self._default_evaluate_fn(lm, metric=evaluate_fn.lower())
+        elif isinstance(evaluate_fn, dspy.LM):
+            # If evaluate_fn is a dspy.LM, use it as judge when expected_output is None
+            judge_lm = evaluate_fn
+            evaluate_fn = self._default_evaluate_fn(lm, judge_lm=judge_lm)
+        elif callable(evaluate_fn):
+            # Check if it's a judge function (takes extracted_data) or regular eval function
+            # We'll handle this in the metric_function wrapper
+            pass
 
         def metric_function(
             example: dspy.Example, prediction: dspy.Prediction, trace: Any = None
@@ -656,7 +868,11 @@ class PydanticOptimizer:
             # Convert DSPy example to our Example type
             # Extract input_data and expected_output from DSPy example
             input_data = getattr(example, "input_data", {})
-            expected_output = getattr(example, "expected_output", {})
+            expected_output = getattr(example, "expected_output", None)
+            # Only use {} as default if expected_output attribute doesn't exist
+            # If it exists but is None, keep it as None
+            if not hasattr(example, "expected_output"):
+                expected_output = {}
 
             # Reconstruct Example from input_data dictionary
             # input_data can contain "text" and/or "images" keys
@@ -757,7 +973,11 @@ class PydanticOptimizer:
         """
         # Extract input_data and expected_output from DSPy example
         input_data = getattr(dspy_ex, "input_data", {})
-        expected_output = getattr(dspy_ex, "expected_output", {})
+        expected_output = getattr(dspy_ex, "expected_output", None)
+        # Only use {} as default if expected_output attribute doesn't exist
+        # If it exists but is None, keep it as None
+        if not hasattr(dspy_ex, "expected_output"):
+            expected_output = {}
 
         # Reconstruct Example from input_data dictionary
         # input_data can contain "text" and/or "images" keys
@@ -927,17 +1147,28 @@ class PydanticOptimizer:
         dspy.configure(lm=lm)
 
         # Ensure we have a valid evaluation function
-        evaluate_fn = self.evaluate_fn
-        if evaluate_fn is None:
+        evaluate_fn_raw = self.evaluate_fn
+        judge_lm: dspy.LM | None = None
+
+        if evaluate_fn_raw is None:
             evaluate_fn = self._default_evaluate_fn(lm)
-        elif isinstance(evaluate_fn, str):
+        elif isinstance(evaluate_fn_raw, str):
             # Handle string metrics: "exact" or "levenshtein"
-            if evaluate_fn.lower() not in ("exact", "levenshtein"):
+            if evaluate_fn_raw.lower() not in ("exact", "levenshtein"):
                 raise ValueError(
-                    f'evaluate_fn must be a callable, None, or one of ("exact", "levenshtein"), '
-                    f'got "{evaluate_fn}"'
+                    f"evaluate_fn must be a callable, dspy.LM, None, or "
+                    f'one of ("exact", "levenshtein"), got "{evaluate_fn_raw}"'
                 )
-            evaluate_fn = self._default_evaluate_fn(lm, metric=evaluate_fn.lower())
+            evaluate_fn = self._default_evaluate_fn(lm, metric=evaluate_fn_raw.lower())
+        elif isinstance(evaluate_fn_raw, dspy.LM):
+            # If evaluate_fn is a dspy.LM, use it as judge when expected_output is None
+            judge_lm = evaluate_fn_raw
+            evaluate_fn = self._default_evaluate_fn(lm, judge_lm=judge_lm)
+        elif callable(evaluate_fn_raw):
+            # Custom function - use default wrapper, it will handle judge functions internally
+            evaluate_fn = self._default_evaluate_fn(lm)
+        else:
+            raise TypeError(f"Unexpected type for evaluate_fn: {type(evaluate_fn_raw)}")
 
         # Create DSPy program with field descriptions and prompts
         program = PydanticOptimizerModule(

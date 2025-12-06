@@ -139,7 +139,7 @@ def main():
         examples=examples,
         model_id="gpt-4o-mini",  # Will use OPENAI_API_KEY from environment
         verbose=True,
-        optimizer_type="miprov2zeroshot",
+        optimizer="miprov2zeroshot",
         system_prompt=(
             "You are an expert image classification assistant specializing in handwritten "
             "digit recognition. You have extensive experience analyzing MNIST-style "

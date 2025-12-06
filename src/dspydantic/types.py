@@ -71,17 +71,25 @@ class Example:
             image_base64="iVBORw0KG...",
             expected_output={"name": "John Doe", "age": 30}
         )
+
+        # Without expected_output (uses LLM judge for evaluation)
+        Example(
+            text="John Doe, 30 years old",
+            expected_output=None
+        )
         ```
 
     Attributes:
         input_data: Input data dictionary (automatically generated from input parameters).
         expected_output: Expected output. Can be a dict or Pydantic model matching the target schema.
             If a Pydantic model, it will be converted to a dict for comparison.
+            If None, evaluation will use an LLM judge or custom evaluation function instead of
+            comparing against expected output.
     """
 
     def __init__(
         self,
-        expected_output: dict[str, Any] | BaseModel,
+        expected_output: dict[str, Any] | BaseModel | None = (None),
         text: str | None = None,
         image_path: str | Path | None = None,
         image_base64: str | None = None,
@@ -92,6 +100,7 @@ class Example:
 
         Args:
             expected_output: Expected output. Can be a dict or Pydantic model.
+                If None, evaluation will use an LLM judge or custom evaluation function.
             text: Plain text input.
             image_path: Path to an image file to convert to base64.
             image_base64: Base64-encoded image string.

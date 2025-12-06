@@ -280,6 +280,74 @@ optimizer = PydanticOptimizer(
 )
 ```
 
+## Evaluation Without Expected Output (LLM Judge)
+
+When you don't have ground truth expected outputs, you can use an LLM as a judge to evaluate the quality of extracted data. This is useful when:
+
+- You have unlabeled data
+- You want to evaluate based on quality rather than exact matching
+- You need more nuanced evaluation criteria
+
+### Using Default LLM Judge
+
+When `expected_output` is `None`, the optimizer automatically uses the same LLM as a judge:
+
+```python
+examples = [
+    Example(
+        text="John Doe, 30 years old, john@example.com",
+        expected_output=None  # No ground truth, uses LLM judge
+    ),
+    Example(
+        text="Jane Smith, 25, jane.smith@email.com",
+        expected_output=None
+    ),
+]
+
+optimizer = PydanticOptimizer(
+    model=User,
+    examples=examples,
+    model_id="gpt-4o",  # This LLM will be used as judge
+    api_key="your-api-key"
+)
+
+result = optimizer.optimize()
+```
+
+### Using a Separate Judge LLM
+
+You can pass a different `dspy.LM` as `evaluate_fn` to use as a judge:
+
+```python
+import dspy
+
+# Create a separate judge LM (e.g., a more powerful model for judging)
+judge_lm = dspy.LM("gpt-4o", api_key="your-api-key")
+
+examples = [
+    Example(
+        text="John Doe, 30 years old",
+        expected_output=None
+    ),
+]
+
+optimizer = PydanticOptimizer(
+    model=User,
+    examples=examples,
+    evaluate_fn=judge_lm,  # Pass dspy.LM as evaluate_fn
+    model_id="gpt-4o",  # This LLM is used for optimization
+    api_key="your-api-key"
+)
+
+result = optimizer.optimize()
+```
+
+**Note**: When `expected_output` is `None`:
+
+- If `evaluate_fn` is a `dspy.LM`, it will be used as the judge
+- If `evaluate_fn` is a callable, it will be treated as a judge function (with `extracted_data` parameter)
+- If `evaluate_fn` is `None` or a string ("exact", "levenshtein"), the default LLM judge will be used
+
 ## Optimizing Prompts
 
 You can also optimize system and instruction prompts:
@@ -441,7 +509,11 @@ Main optimizer class.
 
 - `model` (type[BaseModel]): The Pydantic model class to optimize
 - `examples` (list[Example]): List of examples for optimization
-- `evaluate_fn` (Callable | str | None): Evaluation function or built-in option ("exact", "levenshtein"). If None, uses default evaluation.
+- `evaluate_fn` (Callable | dspy.LM | str | None): Evaluation function, built-in option ("exact", "levenshtein"), or dspy.LM instance.
+  - When `expected_output` is provided: Can be a callable `(Example, dict[str, str], str | None, str | None) -> float`,
+    a string ("exact" or "levenshtein"), or None (uses default evaluation).
+  - When `expected_output` is None: Can be a `dspy.LM` instance (used as judge), a callable judge function
+    `(Example, dict[str, Any], dict[str, str], str | None, str | None) -> float`, or None (uses default LLM judge).
 - `system_prompt` (str | None): Optional initial system prompt to optimize
 - `instruction_prompt` (str | None): Optional initial instruction prompt to optimize
 - `lm` (dspy.LM | None): Optional DSPy language model instance. If provided, used instead of creating one from model_id/api_key.
@@ -472,7 +544,9 @@ Example data for optimization.
 
 **Parameters:**
 
-- `expected_output` (dict | BaseModel): Expected output as a Pydantic model instance or dict
+- `expected_output` (dict | BaseModel | None): Expected output as a Pydantic model instance or dict.
+  If `None`, evaluation will use an LLM judge or custom evaluation function instead of comparing
+  against expected output.
 - `text` (str | None): Plain text input
 - `image_path` (str | Path | None): Path to an image file
 - `image_base64` (str | None): Base64-encoded image string
@@ -505,6 +579,12 @@ Example(
     text="Extract information from this document",
     image_path="document.png",
     expected_output=User(name="John Doe", age=30)
+)
+
+# Without expected_output (uses LLM judge for evaluation)
+Example(
+    text="John Doe, 30 years old",
+    expected_output=None
 )
 ```
 
