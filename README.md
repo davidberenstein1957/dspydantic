@@ -31,6 +31,9 @@ examples = [
 ]
 
 # Optimize field descriptions
+# Optimizer is auto-selected based on dataset size (< 20 examples uses BootstrapFewShot,
+# >= 20 examples uses BootstrapFewShotWithRandomSearch)
+# You can also specify: optimizer="miprov2" or pass a custom Teleprompter instance
 optimizer = PydanticOptimizer(
     model=User,
     examples=examples,
@@ -370,14 +373,14 @@ optimizer = PydanticOptimizer(
 
 ### Manual Optimizer Selection
 
-You can specify an optimizer type by name:
+You can specify an optimizer by passing it as a string (optimizer type name) or as a Teleprompter instance:
 
 ```python
-# Use a specific optimizer type
+# Use a specific optimizer type (as string)
 optimizer = PydanticOptimizer(
     model=User,
     examples=examples,
-    optimizer_type="miprov2",  # or "gepa", "copro", "simba", etc.
+    optimizer="miprov2",  # or "gepa", "copro", "simba", etc.
     model_id="gpt-4o"
 )
 ```
@@ -418,7 +421,7 @@ optimizer = PydanticOptimizer(
 )
 ```
 
-**Note**: `optimizer_type` and `optimizer` are mutually exclusive - you can only specify one of them.
+**Note**: The `optimizer` parameter accepts either a string (optimizer type name) or a Teleprompter instance. If None, it will auto-select based on dataset size.
 
 ## Examples
 
@@ -449,10 +452,15 @@ Main optimizer class.
 - `num_threads` (int): Number of optimization threads (default: 4)
 - `init_temperature` (float): Initial temperature for optimization (default: 1.0)
 - `verbose` (bool): Print progress (default: False)
-- `optimizer_type` (str | None): Optimizer type (mutually exclusive with `optimizer`). If None and `optimizer` is None, auto-selects based on dataset size. Valid options include: "bootstrapfewshot", "bootstrapfewshotwithrandomsearch", "miprov2", "gepa", "copro", "simba", etc. (all Teleprompter subclasses are supported)
-- `optimizer` (Teleprompter | None): Custom optimizer instance (mutually exclusive with `optimizer_type`). If provided, this will be used directly.
+- `optimizer` (str | Teleprompter | None): Optimizer specification. Can be:
+  - A string (optimizer type name): e.g., "miprov2", "gepa", "bootstrapfewshot", etc.
+    If None, optimizer will be auto-selected based on dataset size.
+  - A Teleprompter instance: Custom optimizer instance to use directly.
+  Valid optimizer type strings include: "bootstrapfewshot", "bootstrapfewshotwithrandomsearch",
+  "miprov2", "gepa", "copro", "simba", etc. (all Teleprompter subclasses are supported)
 - `train_split` (float): Fraction of examples to use for training (rest for validation) (default: 0.8)
-- `optimizer_kwargs` (dict[str, Any] | None): Optional dictionary of additional keyword arguments to pass to the optimizer constructor. Only used if `optimizer` is None.
+- `optimizer_kwargs` (dict[str, Any] | None): Optional dictionary of additional keyword arguments
+  to pass to the optimizer constructor. Only used if `optimizer` is a string or None.
 
 **Returns:**
 

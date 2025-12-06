@@ -5,11 +5,16 @@ from collections.abc import Callable
 from typing import Any
 
 import dspy
-from dspy.teleprompt import (
+from dspy.teleprompt import (  # noqa: E402
+    COPRO,
     GEPA,
+    SIMBA,
     BootstrapFewShot,
     BootstrapFewShotWithRandomSearch,
+    KNNFewShot,
+    LabeledFewShot,
     MIPROv2,
+    Teleprompter,
 )
 from pydantic import BaseModel
 
@@ -101,6 +106,26 @@ class PydanticOptimizer:
             lm=custom_lm  # Pass your custom LM (default eval will use this LM)
         )
 
+        # Option 6: Pass optimizer as a string (optimizer type name)
+        optimizer = PydanticOptimizer(
+            model=User,
+            examples=examples,
+            optimizer="miprov2"  # Pass optimizer type as string
+        )
+
+        # Option 7: Pass a custom optimizer instance directly
+        from dspy.teleprompt import MIPROv2
+        custom_optimizer = MIPROv2(
+            metric=lambda x, y, trace=None: 0.9,
+            num_threads=8,
+            auto="full"
+        )
+        optimizer = PydanticOptimizer(
+            model=User,
+            examples=examples,
+            optimizer=custom_optimizer  # Pass your custom optimizer instance
+        )
+
         # Optimize
         result = optimizer.optimize()
         print(result.optimized_descriptions)
@@ -111,9 +136,9 @@ class PydanticOptimizer:
         self,
         model: type[BaseModel],
         examples: list[Example],
-        evaluate_fn: Callable[
-            [Example, dict[str, str], str | None, str | None], float
-        ] | str | None = None,
+        evaluate_fn: Callable[[Example, dict[str, str], str | None, str | None], float]
+        | str
+        | None = None,
         system_prompt: str | None = None,
         instruction_prompt: str | None = None,
         lm: dspy.LM | None = None,
@@ -124,7 +149,7 @@ class PydanticOptimizer:
         num_threads: int = 4,
         init_temperature: float = 1.0,
         verbose: bool = False,
-        optimizer_type: str = "miprov2zeroshot",
+        optimizer: str | Teleprompter | None = None,
         train_split: float = 0.8,
         optimizer_kwargs: dict[str, Any] | None = None,
     ) -> None:
@@ -154,16 +179,23 @@ class PydanticOptimizer:
             num_threads: Number of threads for optimization.
             init_temperature: Initial temperature for optimization.
             verbose: If True, print detailed progress information.
-            optimizer_type: Type of optimizer to use. Options:
-                - "miprov2zeroshot" (default): MIPROv2 for 0-shot optimization
-                - "miprov2": Full MIPROv2 optimization
-                - "gepa": GEPA optimizer
-                - "bootstrapfewshot": BootstrapFewShot optimizer
-                - "bootstrapfewshotwithrandomsearch": BootstrapFewShotWithRandomSearch
+            optimizer: Optimizer specification. Can be:
+                - A string (optimizer type name): e.g., "miprov2", "gepa", "bootstrapfewshot", etc.
+                  If None, optimizer will be auto-selected based on dataset size.
+                - A Teleprompter instance: Custom optimizer instance to use directly.
+                Available optimizer types include: "miprov2", "miprov2zeroshot", "gepa",
+                "bootstrapfewshot", "bootstrapfewshotwithrandomsearch", "knnfewshot",
+                "labeledfewshot", "copro", "simba", and all other Teleprompter subclasses.
             train_split: Fraction of examples to use for training (rest for validation).
-            optimizer_kwargs: Optional dictionary of additional keyword arguments to pass
-                to the optimizer constructor. These will override default parameters.
-                For example: {"max_bootstrapped_demos": 8, "auto": "full"}.
+            optimizer_kwargs: Optional dictionary of additional keyword arguments
+                to pass to the optimizer constructor. These will override default
+                parameters. For example: {"max_bootstrapped_demos": 8, "auto": "full"}.
+                Only used if `optimizer` is a string or None.
+
+        Raises:
+            ValueError: If at least one example is not provided, or if optimizer string
+                is not a valid Teleprompter subclass name.
+            TypeError: If optimizer is not a string, Teleprompter instance, or None.
         """
         if not examples:
             raise ValueError("At least one example must be provided")
@@ -181,21 +213,34 @@ class PydanticOptimizer:
         self.num_threads = num_threads
         self.init_temperature = init_temperature
         self.verbose = verbose
-        self.optimizer_type = optimizer_type.lower()
         self.train_split = train_split
         self.optimizer_kwargs = optimizer_kwargs or {}
 
-        # Validate optimizer type
-        valid_optimizers = (
-            "miprov2zeroshot",
-            "miprov2",
-            "gepa",
-            "bootstrapfewshot",
-            "bootstrapfewshotwithrandomsearch",
-        )
-        if self.optimizer_type not in valid_optimizers:
-            raise ValueError(
-                f"optimizer_type must be one of {valid_optimizers}, got '{optimizer_type}'"
+        # Handle optimizer parameter (can be string or Teleprompter instance)
+        if optimizer is None:
+            # Auto-select optimizer based on dataset size
+            self.optimizer_type = self._auto_select_optimizer()
+            self.custom_optimizer = None
+        elif isinstance(optimizer, str):
+            # String provided - validate and store as type
+            self.optimizer_type = optimizer.lower()
+            # Validate optimizer type by checking if it's a Teleprompter subclass
+            teleprompter_classes = self._get_teleprompter_subclasses()
+            if self.optimizer_type not in teleprompter_classes:
+                valid_optimizers = sorted(teleprompter_classes.keys())
+                raise ValueError(
+                    f"optimizer '{optimizer}' is not a valid Teleprompter subclass. "
+                    f"Valid options: {valid_optimizers}"
+                )
+            self.custom_optimizer = None
+        elif isinstance(optimizer, Teleprompter):
+            # Teleprompter instance provided
+            self.custom_optimizer = optimizer
+            self.optimizer_type = "custom"
+        else:
+            raise TypeError(
+                f"optimizer must be a string, Teleprompter instance, or None, "
+                f"got {type(optimizer).__name__}"
             )
 
         # Extract field descriptions from Pydantic model
@@ -203,8 +248,8 @@ class PydanticOptimizer:
 
         # Check that we have something to optimize
         has_field_descriptions = bool(self.field_descriptions)
-        has_system_prompt = system_prompt is not None
-        has_instruction_prompt = instruction_prompt is not None
+        has_system_prompt = self.system_prompt is not None
+        has_instruction_prompt = self.instruction_prompt is not None
 
         if not (has_field_descriptions or has_system_prompt or has_instruction_prompt):
             raise ValueError(
@@ -212,6 +257,58 @@ class PydanticOptimizer:
                 "field descriptions (add Field(description=...) to model fields), "
                 "system_prompt, or instruction_prompt"
             )
+
+    @staticmethod
+    def _get_teleprompter_subclasses() -> dict[str, type[Teleprompter]]:
+        """Get all subclasses of Teleprompter and create a mapping by lowercase name.
+
+        Returns:
+            Dictionary mapping lowercase class names to Teleprompter subclasses.
+        """
+
+        # Get all subclasses recursively
+        def get_all_subclasses(cls: type) -> set[type]:
+            """Recursively get all subclasses of a class."""
+            subclasses = set()
+            for subclass in cls.__subclasses__():
+                subclasses.add(subclass)
+                subclasses.update(get_all_subclasses(subclass))
+            return subclasses
+
+        subclasses = get_all_subclasses(Teleprompter)
+        # Create mapping: lowercase class name -> class
+        mapping: dict[str, type[Teleprompter]] = {}
+        for subclass in subclasses:
+            # Skip abstract classes or classes that shouldn't be used directly
+            if subclass.__name__ == "Teleprompter":
+                continue
+            # Map lowercase name to class
+            mapping[subclass.__name__.lower()] = subclass
+
+        # Add special case for miprov2zeroshot (which is MIPROv2 with zero-shot settings)
+        if "miprov2" in mapping:
+            mapping["miprov2zeroshot"] = mapping["miprov2"]
+
+        return mapping
+
+    def _auto_select_optimizer(self) -> str:
+        """Auto-select the best optimizer based on the number of examples.
+
+        Selection logic:
+        - Small datasets (< 20 examples): Use BootstrapFewShot
+        - Larger datasets (>= 20 examples): Use BootstrapFewShotWithRandomSearch
+
+        Returns:
+            String name of the recommended optimizer type.
+        """
+        num_examples = len(self.examples)
+
+        if num_examples < 20:
+            # Small dataset - use BootstrapFewShot
+            return "bootstrapfewshot"
+        else:
+            # Larger dataset - use BootstrapFewShotWithRandomSearch
+            return "bootstrapfewshotwithrandomsearch"
 
     def _default_evaluate_fn(
         self, lm: dspy.LM, metric: str = "exact"
@@ -864,9 +961,14 @@ class PydanticOptimizer:
         # Create metric function
         metric = self._create_metric_function(lm)
 
-        # Initialize optimizer based on optimizer_type
-        # Merge default kwargs with user-provided optimizer_kwargs
-        if self.optimizer_type == "miprov2zeroshot":
+        # Initialize optimizer based on optimizer_type or use custom optimizer
+        optimizer: Teleprompter
+        if self.custom_optimizer is not None:
+            # Use custom optimizer directly
+            optimizer = self.custom_optimizer
+            if self.verbose:
+                print(f"Using custom optimizer: {type(optimizer).__name__}")
+        elif self.optimizer_type == "miprov2zeroshot":
             default_kwargs = {
                 "metric": metric,
                 "num_threads": self.num_threads,
@@ -911,6 +1013,34 @@ class PydanticOptimizer:
             }
             merged_kwargs = {**default_kwargs, **self.optimizer_kwargs}
             optimizer = BootstrapFewShotWithRandomSearch(**merged_kwargs)
+        elif self.optimizer_type == "knnfewshot":
+            default_kwargs = {
+                "metric": metric,
+                "K": 4,
+            }
+            merged_kwargs = {**default_kwargs, **self.optimizer_kwargs}
+            optimizer = KNNFewShot(**merged_kwargs)
+        elif self.optimizer_type == "labeledfewshot":
+            default_kwargs = {
+                "metric": metric,
+                "max_labeled_demos": 16,
+            }
+            merged_kwargs = {**default_kwargs, **self.optimizer_kwargs}
+            optimizer = LabeledFewShot(**merged_kwargs)
+        elif self.optimizer_type == "copro":
+            default_kwargs = {
+                "metric": metric,
+                "num_threads": self.num_threads,
+            }
+            merged_kwargs = {**default_kwargs, **self.optimizer_kwargs}
+            optimizer = COPRO(**merged_kwargs)
+        elif self.optimizer_type == "simba":
+            default_kwargs = {
+                "metric": metric,
+                "num_threads": self.num_threads,
+            }
+            merged_kwargs = {**default_kwargs, **self.optimizer_kwargs}
+            optimizer = SIMBA(**merged_kwargs)
         else:
             raise ValueError(f"Unknown optimizer_type: {self.optimizer_type}")
 
@@ -947,18 +1077,33 @@ class PydanticOptimizer:
             if self.field_descriptions:
                 print(f"  - {len(self.field_descriptions)} field descriptions")
 
-        # Some optimizers don't support valset
-        if self.optimizer_type in (
+        # Some optimizers support valset, others don't
+        # Try to use valset if supported, fall back to trainset only if not
+        optimizers_with_valset = (
             "miprov2zeroshot",
             "miprov2",
             "gepa",
             "bootstrapfewshotwithrandomsearch",
-        ):
-            optimized_program = optimizer.compile(
-                program,
-                trainset=train_examples,
-                valset=val_examples,
-            )
+            "copro",
+            "simba",
+            "custom",  # Custom optimizers might support valset
+        )
+
+        if self.optimizer_type in optimizers_with_valset:
+            try:
+                optimized_program = optimizer.compile(
+                    program,
+                    trainset=train_examples,
+                    valset=val_examples,
+                )
+            except TypeError:
+                # If valset is not supported, fall back to trainset only
+                if self.verbose:
+                    print("Warning: Optimizer doesn't support valset, using trainset only")
+                optimized_program = optimizer.compile(
+                    program,
+                    trainset=train_examples,
+                )
         else:
             optimized_program = optimizer.compile(
                 program,
