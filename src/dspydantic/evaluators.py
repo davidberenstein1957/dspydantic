@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from dspydantic.extractor import apply_optimized_descriptions
 from dspydantic.types import Example
-from dspydantic.utils import convert_images_to_dspy_images
+from dspydantic.utils import convert_images_to_dspy_images, format_instruction_prompt_template
 
 
 def default_judge_fn(
@@ -57,7 +57,9 @@ def default_judge_fn(
 
     # Build judge prompt
     system_prompt = optimized_system_prompt or ""
-    instruction_prompt = optimized_instruction_prompt or ""
+    instruction_prompt = (
+        format_instruction_prompt_template(optimized_instruction_prompt, example.text_dict) or ""
+    )
 
     # Get model schema for context
     modified_schema = apply_optimized_descriptions(model, optimized_descriptions)
@@ -171,8 +173,9 @@ def default_evaluate_fn(
         """
         # Build the extraction prompt
         system_prompt_to_use = optimized_system_prompt or system_prompt or ""
+        instruction_prompt_raw = optimized_instruction_prompt or instruction_prompt or ""
         instruction_prompt_to_use = (
-            optimized_instruction_prompt or instruction_prompt or ""
+            format_instruction_prompt_template(instruction_prompt_raw, example.text_dict) or ""
         )
 
         # Get input data from example

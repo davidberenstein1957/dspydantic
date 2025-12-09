@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 from dspydantic.extractor import apply_optimized_descriptions
 from dspydantic.types import Example
-from dspydantic.utils import convert_images_to_dspy_images
+from dspydantic.utils import convert_images_to_dspy_images, format_instruction_prompt_template
 
 
 class HitlManager:
@@ -707,7 +707,12 @@ class HitlManager:
             """
             # Build the extraction prompt (same as default evaluation)
             system_prompt = optimized_system_prompt or self.optimizer.system_prompt or ""
-            instruction_prompt = optimized_instruction_prompt or self.optimizer.instruction_prompt or ""
+            instruction_prompt_raw = (
+                optimized_instruction_prompt or self.optimizer.instruction_prompt or ""
+            )
+            instruction_prompt = (
+                format_instruction_prompt_template(instruction_prompt_raw, example.text_dict) or ""
+            )
 
             # Get input data from example
             input_data = example.input_data
@@ -731,7 +736,7 @@ class HitlManager:
                 # Convert all images to PIL Image objects immediately
                 if images_raw:
                     pil_images = self._convert_to_pil_images(images_raw)
-                    
+
                     # Also keep base64 strings for DSPy conversion (if needed)
                     # Extract base64 strings from dspy.Image objects or use strings directly
                     images_for_dspy = []
@@ -759,14 +764,14 @@ class HitlManager:
                             images_for_dspy = images_raw
                         else:
                             images_for_dspy = [str(img) for img in images_raw]
-                    
+
                     # Convert base64 images to dspy.Image objects if present (for DSPy)
                     if images_for_dspy:
                         try:
                             dspy_images = convert_images_to_dspy_images(images_for_dspy)
                         except ImportError:
                             dspy_images = None
-                
+
                 # If no text but images exist, create a placeholder text
                 if not input_text and pil_images:
                     input_text = "Extract structured data from the provided image(s)."

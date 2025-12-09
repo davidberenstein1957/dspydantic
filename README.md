@@ -19,16 +19,27 @@ class User(BaseModel):
     name: str = Field(description="User name")
     age: int = Field(description="User age")
     email: str = Field(description="Email address")
+    city: str = Field(description="City of residence")
 
-# Provide examples
+# Provide examples with template text dict for instruction prompt formatting
 examples = [
     Example(
-        text="John Doe, 30 years old, john@example.com",
-        expected_output=User(name="John Doe", age=30, email="john@example.com")
+        text={"name": "John Doe", "location": "New York"},
+        expected_output=User(
+            name="John Doe",
+            age=30,
+            email="john@example.com",
+            city="New York"
+        )
     ),
     Example(
-        text="Jane Smith, 25, jane.smith@email.com",
-        expected_output=User(name="Jane Smith", age=25, email="jane.smith@email.com")
+        text={"name": "Jane Smith", "location": "San Francisco"},
+        expected_output=User(
+            name="Jane Smith",
+            age=25,
+            email="jane.smith@email.com",
+            city="San Francisco"
+        )
     ),
 ]
 
@@ -36,6 +47,7 @@ examples = [
 optimizer = PydanticOptimizer(
     model=User,
     examples=examples,
+    instruction_prompt="Extract user information for {name} from {location}",
     evaluate_fn="exact",
     model_id="gpt-4o",
 )
@@ -50,6 +62,8 @@ for field, description in result.optimized_descriptions.items():
 # Create optimized model with updated descriptions
 OptimizedUser = create_optimized_model(User, result.optimized_descriptions)
 ```
+
+**Note**: The `text` parameter can be either a string (for regular text input) or a dictionary (for template formatting). When using a dict, the keys are used to format instruction prompt templates with placeholders like `{key}`.
 
 ## 📦 Installation
 
@@ -66,6 +80,7 @@ uv pip install dspydantic
 ## 🌟 Key Features
 
 - **Auto-optimization**: Automatically finds the best field descriptions using DSPy
+- **Template support**: Use instruction prompt templates with placeholders filled from example data
 - **Multiple input types**: Works with text, images, and PDFs
 - **Built-in evaluation**: Exact matching, Levenshtein distance, or custom evaluators
 - **LLM judge support**: Evaluate without ground truth using LLM-as-judge
@@ -97,14 +112,15 @@ class Invoice(BaseModel):
 
 ### 2. Create Examples
 
-Use plain text, images, PDFs, and Pydantic model instances:
+Use plain text, text dictionaries (for template formatting), images, PDFs, and Pydantic model instances:
 
 ```python
 from dspydantic import Example
 
+# Regular text input
 examples = [
     Example(
-        text="my invoice text", # invoice.png, invoice.pdf
+        text="Invoice INV-2024-001, total $1234.56, dated 2024-01-15",
         expected_output=Invoice(
             invoice_number="INV-2024-001",
             total_amount=1234.56,
@@ -112,6 +128,22 @@ examples = [
         )
     )
 ]
+
+# Text dict for template formatting (use with instruction_prompt templates)
+template_examples = [
+    Example(
+        text={"invoice_id": "INV-2024-001", "company": "Acme Corp"},
+        expected_output=Invoice(
+            invoice_number="INV-2024-001",
+            total_amount=1234.56,
+            date="2024-01-15"
+        )
+    )
+]
+
+# Images and PDFs also supported
+# Example(image_path="invoice.png", ...)
+# Example(pdf_path="invoice.pdf", pdf_dpi=300, ...)
 ```
 
 ### 3. Optimize
@@ -119,6 +151,7 @@ examples = [
 ```python
 from dspydantic import PydanticOptimizer
 
+# Regular optimization
 optimizer = PydanticOptimizer(
     model=Invoice,
     examples=examples,
@@ -129,8 +162,20 @@ optimizer = PydanticOptimizer(
     verbose=True
 )
 
+# With template instruction prompt (placeholders filled from text dict)
+template_optimizer = PydanticOptimizer(
+    model=Invoice,
+    examples=template_examples,
+    instruction_prompt="Extract invoice {invoice_id} data for {company}",
+    evaluate_fn="exact",
+    model_id="gpt-4o",
+    verbose=True
+)
+
 result = optimizer.optimize()
 ```
+
+**Template Formatting**: When using `text` as a dictionary, instruction prompt templates with placeholders like `{key}` are automatically formatted with values from each example's text dict. This allows you to create dynamic, example-specific prompts.
 
 ### 4. Use Optimized Descriptions
 
