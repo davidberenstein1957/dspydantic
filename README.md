@@ -27,19 +27,34 @@ class PatientRecord(BaseModel):
 examples = [
     Example(
         text="Patient: Sarah Johnson, age 45. Presenting with hypertension.",
-        expected_output=PatientRecord(patient_name="Sarah Johnson", urgency="medium", diagnosis="hypertension")
+        expected_output=PatientRecord(
+            patient_name="Sarah Johnson",
+            urgency="medium",
+            diagnosis="hypertension"
+        )
     ),
     Example(
         text="45-year-old Sarah Johnson seen for HTN.",
-        expected_output=PatientRecord(patient_name="Sarah Johnson", urgency="medium", diagnosis="HTN")
+        expected_output=PatientRecord(
+            patient_name="Sarah Johnson",
+            urgency="medium",
+            diagnosis="HTN"
+        )
     ),
 ]
 
 # 3. Optimize and use
-optimizer = PydanticOptimizer(model=PatientRecord, examples=examples, model_id="gpt-4o")
-result = optimizer.optimize()  # Typically improves accuracy from 60-70% to 90%+
+optimizer = PydanticOptimizer(
+    model=PatientRecord,
+    examples=examples,
+    model_id="gpt-4o"
+)
+result = optimizer.optimize() 
 
-OptimizedPatientRecord = create_optimized_model(PatientRecord, result.optimized_descriptions)
+OptimizedPatientRecord = create_optimized_model(
+    PatientRecord,
+    result.optimized_descriptions
+)
 # Use OptimizedPatientRecord just like your original model, but with better accuracy!
 ```
 
@@ -127,9 +142,11 @@ optimizer = PydanticOptimizer(
 )
 
 result = optimizer.optimize()  # Returns optimized descriptions
-result.optimized_descriptions # dict[str, str] containing optimized field descriptions
-result.optimized_system_prompt # str containing optimized system prompt
-result.optimized_instruction_prompt # str containing optimized instruction prompt
+
+# Access optimized results
+result.optimized_descriptions        # dict[str, str] - optimized field descriptions
+result.optimized_system_prompt      # str | None - optimized system prompt
+result.optimized_instruction_prompt # str | None - optimized instruction prompt
 ```
 
 **Template Formatting**: When using `text` as a dictionary, instruction prompt templates with placeholders like `{key}` are automatically formatted with values from each example's text dict. This allows you to create dynamic, example-specific prompts. See the [Template Usage](#template-usage-with-dynamic-prompts) section for a complete example.
@@ -142,26 +159,47 @@ result.optimized_instruction_prompt # str containing optimized instruction promp
 from dspydantic import create_optimized_model
 from openai import OpenAI
 
+# Create optimized model (drop-in replacement)
+OptimizedInvoice = create_optimized_model(
+    Invoice,
+    result.optimized_descriptions
+)
 
+# Use with OpenAI structured outputs
 client = OpenAI()
 messages = []
-if result.optimized_system_prompt:
-    messages.append({"role": "system", "content": result.optimized_system_prompt})
 
-user_content = "Invoice #INV-2024-003 from Widget Co. dated March 10, 2024. Items: Widgets (100x $5), Gadgets (50x $10). Total: $1,000.00"
+# Add optimized system prompt if available
+if result.optimized_system_prompt:
+    messages.append({
+        "role": "system",
+        "content": result.optimized_system_prompt
+    })
+
+# Prepare user content with optimized instruction prompt
+user_content = (
+    "Invoice #INV-2024-003 from Widget Co. dated March 10, 2024. "
+    "Items: Widgets (100x $5), Gadgets (50x $10). Total: $1,000.00"
+)
 if result.optimized_instruction_prompt:
     user_content = f"{result.optimized_instruction_prompt}\n\n{user_content}"
-messages.append({"role": "user", "content": user_content})
 
+messages.append({
+    "role": "user",
+    "content": user_content
+})
+
+# Call OpenAI API with optimized model
 response = client.chat.completions.create(
     model="gpt-4o",
     messages=messages,
     response_format=OptimizedInvoice
-    
 )
 
 # Parse response using the optimized model
-invoice = OptimizedInvoice.model_validate_json(response.choices[0].message.content)
+invoice = OptimizedInvoice.model_validate_json(
+    response.choices[0].message.content
+)
 ```
 
 **That's it!** Your optimized model extracts data more accurately with zero code changes.
@@ -180,23 +218,26 @@ class DigitClassification(BaseModel):
 
 examples = [
     Example(
-        image_path="digit_5.png", 
+        image_path="digit_5.png",
         expected_output=DigitClassification(digit=5)
     ),
     Example(
-        image_path="digit_3.png", 
+        image_path="digit_3.png",
         expected_output=DigitClassification(digit=3)
     ),
 ]
 
 optimizer = PydanticOptimizer(
-    model=DigitClassification, 
-    examples=examples, 
+    model=DigitClassification,
+    examples=examples,
     model_id="gpt-4o"
 )
 result = optimizer.optimize()  # Gain: 75% → 94% accuracy
 
-OptimizedDigit = create_optimized_model(DigitClassification, result.optimized_descriptions)
+OptimizedDigit = create_optimized_model(
+    DigitClassification,
+    result.optimized_descriptions
+)
 ```
 
 ## Working with PDFs
@@ -207,7 +248,10 @@ OptimizedDigit = create_optimized_model(DigitClassification, result.optimized_de
 examples = [
     Example(
         pdf_path="invoice_001.pdf",
-        expected_output=Invoice(invoice_number="INV-2024-001", total_amount=1234.56)
+        expected_output=Invoice(
+            invoice_number="INV-2024-001",
+            total_amount=1234.56
+        )
     ),
 ]
 ```
@@ -230,8 +274,15 @@ class CustomerFeedback(BaseModel):
 # Input: dictionary with placeholders
 examples = [
     Example(
-        text={"review": "Great product!", "customer": "John", "product": "Mouse"},
-        expected_output=CustomerFeedback(sentiment="positive", rating=5)
+        text={
+            "review": "Great product!",
+            "customer": "John",
+            "product": "Mouse"
+        },
+        expected_output=CustomerFeedback(
+            sentiment="positive",
+            rating=5
+        )
     ),
 ]
 
@@ -246,8 +297,7 @@ optimizer = PydanticOptimizer(
 result = optimizer.optimize()
 
 # The optimizer will automatically format the prompt for each example:
-# Example 1: "Analyze the following customer review for John Doe about Wireless Mouse: ..."
-# Example 2: "Analyze the following customer review for Jane Smith about Laptop Stand: ..."
+# Example 1: "Analyze review from John about Mouse: Great product!"
 ```
 
 **Output**: Each example gets a customized prompt automatically—no manual formatting needed!
@@ -268,14 +318,20 @@ class DocumentClassification(BaseModel):
 examples = [
     Example(
         text="Invoice #12345 from Acme Corp. Total: $1,234.56",
-        expected_output=DocumentClassification(doc_type="invoice", priority="high")
+        expected_output=DocumentClassification(
+            doc_type="invoice",
+            priority="high"
+        )
     ),
 ]
 
 optimizer = PydanticOptimizer(
     model=DocumentClassification,
     examples=examples,
-    instruction_prompt="Classify the following document and extract its type, priority, and language.",
+    instruction_prompt=(
+        "Classify the following document and extract "
+        "its type, priority, and language."
+    ),
     evaluate_fn="exact",
     model_id="gpt-4o"
 )
@@ -283,7 +339,8 @@ optimizer = PydanticOptimizer(
 result = optimizer.optimize()
 
 OptimizedDocumentClassification = create_optimized_model(
-    DocumentClassification, result.optimized_descriptions
+    DocumentClassification,
+    result.optimized_descriptions
 )
 ```
 
@@ -305,7 +362,13 @@ class Customer(BaseModel):
 examples = [
     Example(
         text="Jane Smith, 456 Oak Ave, San Francisco",
-        expected_output=Customer(name="Jane Smith", address=Address(street="456 Oak Ave", city="San Francisco"))
+        expected_output=Customer(
+            name="Jane Smith",
+            address=Address(
+                street="456 Oak Ave",
+                city="San Francisco"
+            )
+        )
     ),
 ]
 
@@ -317,7 +380,12 @@ examples = [
 Provide your own evaluation function if needed.
 
 ```python
-def evaluate(example, optimized_descriptions, system_prompt, instruction_prompt) -> float:
+def evaluate(
+    example,
+    optimized_descriptions,
+    system_prompt,
+    instruction_prompt
+) -> float:
     # Your custom logic - returns score 0.0 to 1.0
     return 0.85
 
@@ -344,11 +412,17 @@ When `expected_output` is `None`, the optimizer automatically uses the same LLM 
 ```python
 examples = [
     Example(
-        text="Patient record: John Doe, age 30, contact: john@example.com, presenting symptoms: persistent cough and fatigue",
+        text=(
+            "Patient record: John Doe, age 30, contact: john@example.com, "
+            "presenting symptoms: persistent cough and fatigue"
+        ),
         expected_output=None  # No ground truth, uses LLM judge
     ),
     Example(
-        text="Medical note: Jane Smith, 25 years old, email jane.smith@email.com, chief complaint: headache and dizziness",
+        text=(
+            "Medical note: Jane Smith, 25 years old, "
+            "email jane.smith@email.com, chief complaint: headache and dizziness"
+        ),
         expected_output=None
     ),
 ]
@@ -371,7 +445,10 @@ You can pass a different `dspy.LM` as `evaluate_fn` to use as a judge:
 import dspy
 
 # Create a separate judge LM (e.g., a more powerful model for judging)
-judge_lm = dspy.LM("gpt-4o", api_key="your-api-key")
+judge_lm = dspy.LM(
+    "gpt-4o",
+    api_key="your-api-key"
+)
 
 examples = [
     Example(
@@ -406,7 +483,7 @@ optimizer = PydanticOptimizer(
     model=PatientRecord,
     examples=examples,
     system_prompt="You are a medical assistant.",  # Optional
-    instruction_prompt="Extract patient info. Analyze this: {note}.",   # Optional
+    instruction_prompt="Extract patient info. Analyze this: {note}.",  # Optional
     model_id="gpt-4o"
 )
 
@@ -415,7 +492,11 @@ result = optimizer.optimize()
 
 # Create optimized model with updated descriptions
 from dspydantic import create_optimized_model
-OptimizedPatientRecord = create_optimized_model(PatientRecord, result.optimized_descriptions)
+
+OptimizedPatientRecord = create_optimized_model(
+    PatientRecord,
+    result.optimized_descriptions
+)
 
 # Access optimized prompts
 print(result.optimized_system_prompt)      # Optimized system prompt
@@ -581,26 +662,46 @@ Example data for optimization.
 # Text input
 Example(
     text="Patient: John Doe, age 30, diagnosed with hypertension",
-    expected_output=PatientRecord(patient_name="John Doe", age=30, diagnosis="hypertension", medications=[])
+    expected_output=PatientRecord(
+        patient_name="John Doe",
+        age=30,
+        diagnosis="hypertension",
+        medications=[]
+    )
 )
 
 # Image input
 Example(
     image_path="medical_form.png",
-    expected_output=PatientRecord(patient_name="Jane Smith", age=45, diagnosis="diabetes", medications=["Metformin"])
+    expected_output=PatientRecord(
+        patient_name="Jane Smith",
+        age=45,
+        diagnosis="diabetes",
+        medications=["Metformin"]
+    )
 )
 
 # PDF input
 Example(
     pdf_path="patient_record.pdf",
-    expected_output=PatientRecord(patient_name="Bob Johnson", age=52, diagnosis="asthma", medications=["Albuterol"])
+    expected_output=PatientRecord(
+        patient_name="Bob Johnson",
+        age=52,
+        diagnosis="asthma",
+        medications=["Albuterol"]
+    )
 )
 
 # Combined text and image
 Example(
     text="Extract patient information from this medical form",
     image_path="medical_form.png",
-    expected_output=PatientRecord(patient_name="Sarah Williams", age=38, diagnosis="migraine", medications=["Ibuprofen"])
+    expected_output=PatientRecord(
+        patient_name="Sarah Williams",
+        age=38,
+        diagnosis="migraine",
+        medications=["Ibuprofen"]
+    )
 )
 
 # Without expected_output (uses LLM judge for evaluation)
@@ -629,9 +730,13 @@ Example(
 from dspydantic import create_optimized_model
 
 # Create optimized model with improved field descriptions
-OptimizedInvoice = create_optimized_model(Invoice, result.optimized_descriptions)
+OptimizedInvoice = create_optimized_model(
+    Invoice,
+    result.optimized_descriptions
+)
 
-# Use with OpenAI structured outputs—the optimized descriptions improve extraction accuracy
+# Use with OpenAI structured outputs
+# The optimized descriptions improve extraction accuracy
 response = client.chat.completions.create(
     model="gpt-4o",
     messages=messages,
@@ -658,13 +763,21 @@ Get optimized JSON schema without creating a new model class. Useful for one-off
 from dspydantic import apply_optimized_descriptions
 
 # Get optimized schema directly without creating a new model class
-optimized_schema = apply_optimized_descriptions(Invoice, result.optimized_descriptions)
+optimized_schema = apply_optimized_descriptions(
+    Invoice,
+    result.optimized_descriptions
+)
 
 # Use with OpenAI structured outputs
 response = client.chat.completions.create(
     model="gpt-4o",
     messages=messages,
-    response_format={"type": "json_schema", "json_schema": {"schema": optimized_schema}}
+    response_format={
+        "type": "json_schema",
+        "json_schema": {
+            "schema": optimized_schema
+        }
+    }
 )
 ```
 
