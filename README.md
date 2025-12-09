@@ -47,7 +47,9 @@ examples = [
 optimizer = PydanticOptimizer(
     model=PatientRecord,
     examples=examples,
-    model_id="gpt-4o"
+    model_id="gpt-4o",
+    system_prompt="You are a medical assistant.",
+    instruction_prompt="Extract patient info.",
 )
 result = optimizer.optimize() 
 
@@ -55,10 +57,39 @@ OptimizedPatientRecord = create_optimized_model(
     PatientRecord,
     result.optimized_descriptions
 )
+result.optimized_system_prompt
+result.optimized_instruction_prompt
 # Use OptimizedPatientRecord just like your original model, but with better accuracy!
 ```
 
 **That's it!** Your model now has optimized descriptions that extract data more accurately.
+
+### Excluding Fields from Evaluation
+
+If you have fields that shouldn't affect the evaluation score (e.g., metadata, timestamps, or fields you're not optimizing), you can exclude them:
+
+```python
+from pydantic import BaseModel, Field
+
+class PatientRecord(BaseModel):
+    patient_name: str = Field(description="Patient full name")
+    urgency: Literal["low", "medium", "high", "critical"] = Field(
+        description="Urgency level of the case"
+    )
+    diagnosis: str = Field(description="Primary diagnosis")
+    metadata: str = Field(description="Internal metadata")  # Not important for evaluation
+    timestamp: str = Field(description="Record timestamp")  # Not important for evaluation
+
+optimizer = PydanticOptimizer(
+    model=PatientRecord,
+    examples=examples,
+    model_id="gpt-4o",
+    exclude_fields=["metadata", "timestamp"],  # These fields won't affect scoring
+)
+result = optimizer.optimize()
+```
+
+Excluded fields will still be extracted by the model, but they won't be included in the evaluation score calculation. This is useful when you have fields that are not critical for optimization or that you don't want to optimize for.
 
 ## 📦 Installation
 

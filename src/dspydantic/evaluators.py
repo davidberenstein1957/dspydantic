@@ -139,6 +139,7 @@ def default_evaluate_fn(
     metric: str = "exact",
     judge_lm: dspy.LM | None = None,
     custom_judge_fn: Callable[..., float] | None = None,
+    exclude_fields: list[str] | None = None,
 ) -> Callable[[Example, dict[str, str], str | None, str | None], float]:
     """Create a default evaluation function that uses the LLM for structured extraction.
 
@@ -154,6 +155,9 @@ def default_evaluate_fn(
               DeepDiff deep_distance for nested structures
         judge_lm: Optional separate LM to use as judge when expected_output is None.
         custom_judge_fn: Optional custom judge function to use when expected_output is None.
+        exclude_fields: Optional list of field paths to exclude from evaluation.
+            Field paths use dot notation for nested fields (e.g., ["address.street", "metadata"]).
+            Fields matching these paths (or starting with them) will be excluded from scoring.
 
     Returns:
         An evaluation function that performs structured extraction and compares
@@ -474,6 +478,24 @@ def default_evaluate_fn(
                     break
             if is_leaf:
                 leaf_field_paths.append(field_path)
+
+        # Filter out excluded fields
+        if exclude_fields:
+            excluded_set = set(exclude_fields)
+            filtered_leaf_field_paths = []
+            for field_path in leaf_field_paths:
+                # Check if this field path should be excluded
+                # A field is excluded if:
+                # 1. It exactly matches an excluded path, or
+                # 2. It starts with an excluded path followed by a dot (nested field)
+                should_exclude = False
+                for excluded_path in excluded_set:
+                    if field_path == excluded_path or field_path.startswith(f"{excluded_path}."):
+                        should_exclude = True
+                        break
+                if not should_exclude:
+                    filtered_leaf_field_paths.append(field_path)
+            leaf_field_paths = filtered_leaf_field_paths
 
         # Compute distance for each field and average
         if leaf_field_paths:
