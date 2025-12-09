@@ -50,6 +50,56 @@ def test_extract_field_descriptions_nested() -> None:
     assert descriptions["address.city"] == "City name"
 
 
+def test_extract_field_descriptions_without_descriptions() -> None:
+    """Test extracting field descriptions when fields don't have descriptions."""
+
+    class UserWithoutDescriptions(BaseModel):
+        """User model without field descriptions."""
+
+        name: str  # No description
+        age: int  # No description
+        email: str = Field(description="User email")  # Has description
+
+    descriptions = extract_field_descriptions(UserWithoutDescriptions)
+    assert "name" in descriptions
+    assert "age" in descriptions
+    assert "email" in descriptions
+    # Fields without descriptions should use field name
+    assert descriptions["name"] == "name"
+    assert descriptions["age"] == "age"
+    # Field with description should use the description
+    assert descriptions["email"] == "User email"
+
+
+def test_extract_field_descriptions_nested_without_descriptions() -> None:
+    """Test extracting field descriptions from nested models without descriptions."""
+
+    class SimpleAddress(BaseModel):
+        """Address model without descriptions."""
+
+        street: str  # No description
+        city: str  # No description
+
+    class UserWithNestedWithoutDescriptions(BaseModel):
+        """User model with nested address without descriptions."""
+
+        name: str = Field(description="User name")
+        address: SimpleAddress  # No description
+
+    descriptions = extract_field_descriptions(UserWithNestedWithoutDescriptions)
+    assert "name" in descriptions
+    assert "address" in descriptions
+    assert "address.street" in descriptions
+    assert "address.city" in descriptions
+    # Top-level field with description
+    assert descriptions["name"] == "User name"
+    # Nested field without description should use field name
+    assert descriptions["address"] == "address"
+    # Nested model fields without descriptions should use field names
+    assert descriptions["address.street"] == "street"
+    assert descriptions["address.city"] == "city"
+
+
 def test_apply_optimized_descriptions() -> None:
     """Test applying optimized descriptions to a model."""
     optimized = {

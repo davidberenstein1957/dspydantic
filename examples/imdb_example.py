@@ -9,7 +9,7 @@ text dictionaries.
 import random
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from dspydantic import Example, PydanticOptimizer
 
@@ -17,9 +17,7 @@ from dspydantic import Example, PydanticOptimizer
 class SentimentClassification(BaseModel):
     """Sentiment classification model for movie reviews."""
 
-    sentiment: Literal["positive", "negative"] = Field(
-        description="The sentiment of the movie review, either positive or negative"
-    )
+    sentiment: Literal["positive", "negative"]
 
 
 def load_imdb_examples(num_examples: int = 10) -> list[Example]:

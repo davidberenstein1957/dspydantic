@@ -9,7 +9,7 @@ from dspy.teleprompt import MIPROv2, Teleprompter  # noqa: E402
 from pydantic import BaseModel
 
 from dspydantic.evaluators import default_evaluate_fn
-from dspydantic.extractor import extract_field_descriptions
+from dspydantic.extractor import extract_field_descriptions, extract_field_types
 from dspydantic.hitl import HitlManager
 from dspydantic.module import PydanticOptimizerModule
 from dspydantic.types import Example, OptimizationResult
@@ -307,7 +307,11 @@ class PydanticOptimizer:
             )
 
         # Extract field descriptions from Pydantic model
+        # Field descriptions are automatically set from field names if not provided
         self.field_descriptions = extract_field_descriptions(self.model)
+
+        # Extract field types from Pydantic model
+        self.field_types = extract_field_types(self.model)
 
         # Initialize HITL manager
         self._hitl_manager = HitlManager(self)
@@ -320,7 +324,7 @@ class PydanticOptimizer:
         if not (has_field_descriptions or has_system_prompt or has_instruction_prompt):
             raise ValueError(
                 "At least one of the following must be provided: "
-                "field descriptions (add Field(description=...) to model fields), "
+                "model fields (field descriptions are automatically set from field names if not provided), "
                 "system_prompt, or instruction_prompt"
             )
 
@@ -361,7 +365,8 @@ class PydanticOptimizer:
         """Auto-select the best optimizer based on the number of examples.
 
         Selection logic:
-        - Small datasets (< 20 examples): Use BootstrapFewShot
+        - Very small datasets (1-2 examples): Use MIPROv2ZeroShot (avoids BootstrapFewShot bug)
+        - Small datasets (3-19 examples): Use BootstrapFewShot
         - Larger datasets (>= 20 examples): Use BootstrapFewShotWithRandomSearch
 
         Returns:
@@ -369,7 +374,10 @@ class PydanticOptimizer:
         """
         num_examples = len(self.examples)
 
-        if num_examples < 20:
+        if num_examples <= 2:
+            # Very small dataset - use MIPROv2ZeroShot to avoid BootstrapFewShot bug
+            return "miprov2zeroshot"
+        elif num_examples < 20:
             # Small dataset - use BootstrapFewShot
             return "bootstrapfewshot"
         else:
@@ -745,6 +753,10 @@ class PydanticOptimizer:
         trainset = []
         input_keys = list(self.field_descriptions.keys())
 
+        # Add field type keys to input keys
+        for field_path in self.field_types.keys():
+            input_keys.append(f"field_type_{field_path}")
+
         # Add prompts to input keys if they exist
         if self.system_prompt is not None:
             input_keys.append("system_prompt")
@@ -785,6 +797,10 @@ class PydanticOptimizer:
             # Add field descriptions as inputs
             example_dict.update(self.field_descriptions)
 
+            # Add field types as inputs (with field_type_ prefix to distinguish from descriptions)
+            for field_path, field_type in self.field_types.items():
+                example_dict[f"field_type_{field_path}"] = field_type
+
             # Add prompts as inputs if they exist
             if self.system_prompt is not None:
                 example_dict["system_prompt"] = self.system_prompt
@@ -820,6 +836,10 @@ class PydanticOptimizer:
             print(f"Optimizer: {self.optimizer_type.upper()}")
             print(f"Examples: {len(self.examples)}")
             print(f"Fields to optimize: {len(self.field_descriptions)}")
+            if self.field_descriptions:
+                print("\nInitial field descriptions (set during initialization):")
+                for field_path, description in self.field_descriptions.items():
+                    print(f"  {field_path}: {description}")
             print(f"Optimization threads: {self.num_threads}")
             print(f"{'='*60}\n")
 
@@ -873,9 +893,10 @@ class PydanticOptimizer:
         else:
             raise TypeError(f"Unexpected type for evaluate_fn: {type(evaluate_fn_raw)}")
 
-        # Create DSPy program with field descriptions and prompts
+        # Create DSPy program with field descriptions, types, and prompts
         program = PydanticOptimizerModule(
             field_descriptions=self.field_descriptions,
+            field_types=self.field_types,
             has_system_prompt=self.system_prompt is not None,
             has_instruction_prompt=self.instruction_prompt is not None,
         )
@@ -884,7 +905,8 @@ class PydanticOptimizer:
         trainset = self._prepare_dspy_examples()
 
         # Split into train and validation sets
-        split_idx = int(len(trainset) * self.train_split)
+        # Ensure at least one example in trainset (needed for optimizers like MIPROv2)
+        split_idx = max(1, int(len(trainset) * self.train_split))
         train_examples = trainset[:split_idx]
         val_examples = trainset[split_idx:] if split_idx < len(trainset) else trainset
 
@@ -937,6 +959,9 @@ class PydanticOptimizer:
             optimizer_class = teleprompter_classes[self.optimizer_type]
             # Use default kwargs (just metric) and merge with user-provided kwargs
             default_kwargs = {"metric": metric}
+            # For BootstrapFewShot with small datasets, limit bootstrapped demos to avoid bugs
+            if self.optimizer_type == "bootstrapfewshot" and len(self.examples) < 5:
+                default_kwargs["max_bootstrapped_demos"] = min(2, len(self.examples) - 1)
             merged_kwargs = {**default_kwargs, **self.optimizer_kwargs}
             optimizer = optimizer_class(**merged_kwargs)
 
@@ -1006,9 +1031,12 @@ class PydanticOptimizer:
                 trainset=train_examples,
             )
 
-        # Build arguments for optimized program (field descriptions and prompts)
+        # Build arguments for optimized program (field descriptions, types, and prompts)
         program_args: dict[str, Any] = {}
         program_args.update(self.field_descriptions)
+        # Add field types with field_type_ prefix
+        for field_path, field_type in self.field_types.items():
+            program_args[f"field_type_{field_path}"] = field_type
         if self.system_prompt is not None:
             program_args["system_prompt"] = self.system_prompt
         if self.instruction_prompt is not None:
@@ -1051,6 +1079,14 @@ class PydanticOptimizer:
                     val_program_args[field_path] = getattr(val_ex, field_path)
                 else:
                     val_program_args[field_path] = self.field_descriptions[field_path]
+
+            # Add field types
+            for field_path in self.field_types.keys():
+                field_type_key = f"field_type_{field_path}"
+                if hasattr(val_ex, field_type_key):
+                    val_program_args[field_type_key] = getattr(val_ex, field_type_key)
+                else:
+                    val_program_args[field_type_key] = self.field_types[field_path]
 
             if self.system_prompt is not None:
                 val_program_args["system_prompt"] = self.system_prompt
