@@ -1,6 +1,8 @@
 """Utility functions for handling different input types."""
 
 import base64
+import re
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -202,7 +204,9 @@ def base64_to_dspy_image(base64_str: str) -> Any:
         ImportError: If dspy is not installed.
     """
     if dspy is None:
-        raise ImportError("dspy is required for image handling. Install it with: uv pip install dspy-ai")
+        raise ImportError(
+            "dspy is required for image handling. Install it with: uv pip install dspy-ai"
+        )
 
     # Create a data URL from base64 string
     # DSPy's Image.from_url can handle data URLs
@@ -229,3 +233,97 @@ def convert_images_to_dspy_images(images: list[str] | None) -> list[Any] | None:
 
     return [base64_to_dspy_image(img) for img in images]
 
+
+def has_template_placeholders(text: str) -> bool:
+    """Check if a string contains template placeholders.
+
+    Args:
+        text: String to check for placeholders.
+
+    Returns:
+        True if the string contains placeholders like {key}, False otherwise.
+    """
+    if not text:
+        return False
+    placeholder_pattern = r"\{([^}]+)\}"
+    return bool(re.search(placeholder_pattern, text))
+
+
+def format_instruction_prompt_template(
+    instruction_prompt: str | None, text_dict: dict[str, str] | None = None
+) -> str | None:
+    """Format an instruction prompt template with values from text_dict.
+
+    This function formats instruction prompts that contain placeholders like "{key}"
+    by replacing them with values from the text_dict dictionary. If no template is
+    provided or not all keys match, unmatched values are appended to the prompt.
+
+    Args:
+        instruction_prompt: Instruction prompt template string with placeholders
+            (e.g., "{key} template {key_2} template {key_3}").
+        text_dict: Dictionary mapping placeholder keys to values. If None or empty,
+            returns the instruction_prompt as-is.
+
+    Returns:
+        Formatted instruction prompt string, or None if instruction_prompt is None.
+
+    Examples:
+        ```python
+        template = "Extract {field} from {source}"
+        values = {"field": "name", "source": "document"}
+        formatted = format_instruction_prompt_template(template, values)
+        # Returns: "Extract name from document"
+        ```
+
+    Note:
+        - If text_dict is provided but instruction_prompt has no placeholders,
+          the dict values are appended to the prompt with a warning.
+        - If some keys in text_dict don't match placeholders, unmatched values
+          are appended to the prompt with a warning.
+    """
+    if instruction_prompt is None:
+        return None
+
+    if not text_dict:
+        return instruction_prompt
+
+    # Find all placeholders in the instruction prompt
+    placeholder_pattern = r"\{([^}]+)\}"
+    placeholders = set(re.findall(placeholder_pattern, instruction_prompt))
+    text_dict_keys = set(text_dict.keys())
+
+    # If no placeholders exist but text_dict is provided, append values
+    if not placeholders:
+        values_str = ", ".join(f"{k}: {v}" for k, v in text_dict.items())
+        warnings.warn(
+            f"No template placeholders found in instruction prompt, but text_dict "
+            f"was provided. Appending values: {values_str}",
+            UserWarning,
+            stacklevel=2,
+        )
+        return f"{instruction_prompt}\n\nAdditional context: {values_str}"
+
+    # Find unmatched keys (keys in text_dict that aren't placeholders)
+    unmatched_keys = text_dict_keys - placeholders
+
+    # Format the template with all keys from text_dict
+    # Use SafeDict to handle placeholders that aren't in text_dict
+    class SafeDict(dict[str, str]):
+        def __missing__(self, key: str) -> str:
+            return f"{{{key}}}"
+
+    formatted = instruction_prompt.format_map(SafeDict(text_dict))
+
+    # Append unmatched keys if any (keys in text_dict that aren't placeholders)
+    if unmatched_keys:
+        unmatched_values = {k: text_dict[k] for k in unmatched_keys}
+        values_str = ", ".join(f"{k}: {v}" for k, v in unmatched_values.items())
+        warnings.warn(
+            f"Some keys in text_dict don't match template placeholders: {unmatched_keys}. "
+            f"Appending unmatched values: {values_str}",
+            UserWarning,
+            stacklevel=2,
+        )
+        formatted = f"{formatted}\n\nAdditional context: {values_str}"
+
+    return formatted

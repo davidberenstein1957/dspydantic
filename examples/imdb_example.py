@@ -1,7 +1,9 @@
 """IMDB text classification example using stanfordnlp/imdb dataset.
 
 This example demonstrates how to optimize a Pydantic model for sentiment classification
-on the IMDB movie review dataset from HuggingFace.
+on the IMDB movie review dataset from HuggingFace. It showcases template functionality
+by using instruction prompt templates with placeholders that are filled from example
+text dictionaries.
 """
 
 import random
@@ -73,15 +75,22 @@ def load_imdb_examples(num_examples: int = 10) -> list[Example]:
     selected_indices_list = list(selected_indices)[:num_examples]
     random.shuffle(selected_indices_list)
 
-    # Build examples
+    # Build examples with template text dict
     examples = []
     for idx in selected_indices_list:
         item = dataset[idx]
         # Convert label (0=negative, 1=positive) to string
         sentiment = "positive" if item["label"] == 1 else "negative"
+        review_text = item["text"]
+        review_length = len(review_text.split())
 
+        # Use text as dict for template formatting
+        # The "review" key will be automatically extracted for input_data
         example = Example(
-            text=item["text"],
+            text={
+                "review": review_text,
+                "review_length": str(review_length),
+            },
             expected_output={"sentiment": sentiment},
         )
         examples.append(example)
@@ -98,7 +107,11 @@ def main():
     print("\nSample examples:")
     for i, example in enumerate(examples[:3], 1):
         print(f"\nExample {i}:")
-        print(f"  Text preview: {example.input_data['text'][:100]}...")
+        text_dict = example.text_dict
+        review_preview = text_dict.get("review", "")[:100] if text_dict else ""
+        print(f"  Review preview: {review_preview}...")
+        review_len = text_dict.get("review_length", "N/A")
+        print(f"  Review length: {review_len} words")
         print(f"  Expected sentiment: {example.expected_output['sentiment']}")
 
     # Create optimizer with system and instruction prompts
@@ -107,7 +120,7 @@ def main():
         examples=examples,
         model_id="gpt-4o-mini",  # Will use OPENAI_API_KEY from environment
         verbose=True,
-        optimizer="miprov2zeroshot",
+        optimizer="bootstrapfewshot",
         system_prompt=(
             "You are an expert sentiment analysis assistant specializing in movie review "
             "classification. You understand nuanced language, sarcasm, and contextual cues "
@@ -115,13 +128,7 @@ def main():
             "accurately distinguish between genuine praise and criticism even when reviews "
             "contain mixed signals."
         ),
-        instruction_prompt=(
-            "Analyze the provided movie review text and determine its overall sentiment. "
-            "Consider the tone, word choice, and overall message of the review. "
-            "Classify the sentiment as either 'positive' (if the review is favorable) or "
-            "'negative' (if the review is unfavorable). Return the sentiment classification "
-            "as specified in the JSON schema."
-        ),
+        instruction_prompt="A review of a movie: {review}",
     )
 
     # Optimize

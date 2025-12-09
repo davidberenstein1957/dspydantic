@@ -46,6 +46,12 @@ class Example:
             expected_output={"name": "John Doe", "age": 30}
         )
 
+        # Text dict for template formatting
+        Example(
+            text={"name": "John Doe", "location": "New York"},
+            expected_output={"name": "John Doe", "age": 30}
+        )
+
         # Image from file
         Example(
             image_path="document.png",
@@ -81,7 +87,11 @@ class Example:
 
     Attributes:
         input_data: Input data dictionary (automatically generated from input parameters).
-        expected_output: Expected output. Can be a dict or Pydantic model matching the target schema.
+        text_dict: Dictionary of text values for template formatting. Used to format
+            instruction prompt templates with placeholders like "{key}".
+            Set automatically when text parameter is a dict.
+        expected_output: Expected output. Can be a dict or Pydantic model matching
+            the target schema.
             If a Pydantic model, it will be converted to a dict for comparison.
             If None, evaluation will use an LLM judge or custom evaluation function instead of
             comparing against expected output.
@@ -90,7 +100,7 @@ class Example:
     def __init__(
         self,
         expected_output: dict[str, Any] | BaseModel | None = (None),
-        text: str | None = None,
+        text: str | dict[str, str] | None = None,
         image_path: str | Path | None = None,
         image_base64: str | None = None,
         pdf_path: str | Path | None = None,
@@ -101,7 +111,10 @@ class Example:
         Args:
             expected_output: Expected output. Can be a dict or Pydantic model.
                 If None, evaluation will use an LLM judge or custom evaluation function.
-            text: Plain text input.
+            text: Plain text input (str) or dictionary of text values for template
+                formatting (dict). If a dict, keys correspond to placeholders in
+                instruction prompt templates (e.g., {"key": "value"}). If a string,
+                it's used as the input text.
             image_path: Path to an image file to convert to base64.
             image_base64: Base64-encoded image string.
             pdf_path: Path to a PDF file to convert to images.
@@ -112,12 +125,37 @@ class Example:
         """
         self.expected_output = expected_output
 
+        # Store text_dict if text is a dict, otherwise store as text_string
+        if isinstance(text, dict):
+            self.text_dict = text
+            # Extract text from dict if available (for input_data)
+            # Check common keys: "text", "review", "content", etc.
+            text_string = (
+                text.get("text")
+                or text.get("review")
+                or text.get("content")
+                or text.get("input")
+                or None
+            )
+        else:
+            self.text_dict = {}
+            text_string = text
+
         # Use prepare_input_data to create input_data from parameters
-        self.input_data = prepare_input_data(
-            text=text,
-            image_path=image_path,
-            image_base64=image_base64,
-            pdf_path=pdf_path,
-            pdf_dpi=pdf_dpi,
-        )
+        # If text_string is None and no other inputs, we'll set input_data manually later
+        try:
+            self.input_data = prepare_input_data(
+                text=text_string,
+                image_path=image_path,
+                image_base64=image_base64,
+                pdf_path=pdf_path,
+                pdf_dpi=pdf_dpi,
+            )
+        except ValueError:
+            # If no inputs provided and text is a dict, create empty input_data
+            # It can be set manually later if needed
+            if isinstance(text, dict):
+                self.input_data = {}
+            else:
+                raise
 

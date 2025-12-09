@@ -13,7 +13,7 @@ from dspydantic.extractor import extract_field_descriptions
 from dspydantic.hitl import HitlManager
 from dspydantic.module import PydanticOptimizerModule
 from dspydantic.types import Example, OptimizationResult
-from dspydantic.utils import convert_images_to_dspy_images
+from dspydantic.utils import convert_images_to_dspy_images, format_instruction_prompt_template
 
 
 class PydanticOptimizer:
@@ -789,7 +789,18 @@ class PydanticOptimizer:
             if self.system_prompt is not None:
                 example_dict["system_prompt"] = self.system_prompt
             if self.instruction_prompt is not None:
-                example_dict["instruction_prompt"] = self.instruction_prompt
+                # Format instruction prompt template with example's text_dict for optimization
+                # The optimizer will see formatted versions in examples, but we'll preserve
+                # the template structure when optimizing
+                if ex.text_dict:
+                    formatted_instruction = format_instruction_prompt_template(
+                        self.instruction_prompt, ex.text_dict
+                    )
+                    example_dict["instruction_prompt"] = (
+                        formatted_instruction or self.instruction_prompt
+                    )
+                else:
+                    example_dict["instruction_prompt"] = self.instruction_prompt
 
             trainset.append(dspy.Example(**example_dict).with_inputs(*input_keys))
 
