@@ -12,6 +12,7 @@ class PydanticOptimizerModule(dspy.Module):
     def __init__(
         self,
         field_descriptions: dict[str, str] | None = None,
+        field_types: dict[str, str] | None = None,
         has_system_prompt: bool = False,
         has_instruction_prompt: bool = False,
     ):
@@ -19,19 +20,22 @@ class PydanticOptimizerModule(dspy.Module):
 
         Args:
             field_descriptions: Dictionary mapping field paths to their descriptions.
+            field_types: Dictionary mapping field paths to their type names as strings.
             has_system_prompt: Whether to optimize a system prompt.
             has_instruction_prompt: Whether to optimize an instruction prompt.
         """
         super().__init__()
 
-        # Store field descriptions for optimization
+        # Store field descriptions and types for optimization
         self.field_descriptions = field_descriptions or {}
+        self.field_types = field_types or {}
 
         # Create optimizers for each field description
         self.field_optimizers: dict[str, dspy.ChainOfThought] = {}
         for field_path, description in self.field_descriptions.items():
             # Create a signature for optimizing this field's description
-            signature = "field_description -> optimized_field_description"
+            # Include field_type in the signature if available
+            signature = "field_description, field_type -> optimized_field_description"
             self.field_optimizers[field_path] = dspy.ChainOfThought(signature)
 
         # Create optimizers for prompts if needed
@@ -66,9 +70,19 @@ class PydanticOptimizerModule(dspy.Module):
 
         # Optimize field descriptions
         for field_path, description in field_descriptions.items():
+            # Skip field_type_ prefixed entries (they're metadata, not descriptions)
+            if field_path.startswith("field_type_"):
+                continue
+
             if field_path in self.field_optimizers:
                 optimizer = self.field_optimizers[field_path]
-                result = optimizer(field_description=description)
+                # Get field type from keyword arguments (passed as field_type_{field_path})
+                # or fall back to stored field_types
+                field_type_key = f"field_type_{field_path}"
+                field_type = field_descriptions.get(field_type_key, "")
+                if not field_type:
+                    field_type = self.field_types.get(field_path, "")
+                result = optimizer(field_description=description, field_type=field_type)
                 optimized[f"optimized_{field_path}"] = (
                     result.optimized_field_description
                 )
@@ -93,15 +107,26 @@ class PydanticOptimizerModule(dspy.Module):
                 original_prompt_marker = "ORIGINAL_PROMPT_TEMPLATE"
                 rewrite_instructions_marker = "PROMPT_TEMPLATE_REWRITE_INSTRUCTIONS"
 
-                # Build field descriptions if available
+                # Build field descriptions and types if available
                 field_descriptions_text = ""
                 if field_descriptions:
                     field_desc_lines = []
                     for key, value in field_descriptions.items():
-                        field_desc_lines.append(f"- {key}: {value}")
+                        # Skip field_type_ prefixed entries (they're metadata, not descriptions)
+                        if key.startswith("field_type_"):
+                            continue
+                        # Get field type if available (from kwargs or stored types)
+                        field_type_key = f"field_type_{key}"
+                        field_type = field_descriptions.get(field_type_key, "")
+                        if not field_type:
+                            field_type = self.field_types.get(key, "")
+                        if field_type:
+                            field_desc_lines.append(f"- {key} ({field_type}): {value}")
+                        else:
+                            field_desc_lines.append(f"- {key}: {value}")
                     if field_desc_lines:
                         field_descriptions_text = (
-                            "\n\nAdditionally, here are the field descriptions for the structured information you are helping to extract:"
+                            "\n\nAdditionally, here are the field descriptions and types for the structured information you are helping to extract:"
                             "\n" + "\n".join(field_desc_lines)
                         )
 

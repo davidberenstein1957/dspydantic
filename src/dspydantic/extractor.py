@@ -1,7 +1,8 @@
 """Utilities for extracting and applying field descriptions from Pydantic models."""
 
 import copy
-from typing import Any, get_args, get_origin
+from enum import Enum
+from typing import Any, Literal, get_args, get_origin
 
 from pydantic import BaseModel, Field, create_model
 from pydantic.fields import FieldInfo
@@ -11,25 +12,27 @@ def extract_field_descriptions(
     model: type[BaseModel], prefix: str = ""
 ) -> dict[str, str]:
     """Extract field descriptions from a Pydantic model recursively.
-    
+
+    If a field doesn't have a description, the field name is used as the description.
+
     Args:
         model: The Pydantic model class.
         prefix: Prefix for nested field paths (used internally for recursion).
-    
+
     Returns:
         Dictionary mapping field paths to their descriptions.
         Field paths use dot notation for nested fields (e.g., "user.name").
-    
+
     Example:
         ```python
         from pydantic import BaseModel, Field
-        
+
         class User(BaseModel):
             name: str = Field(description="User's full name")
-            age: int = Field(description="User's age")
-        
+            age: int  # No description provided
+
         descriptions = extract_field_descriptions(User)
-        # Returns: {"name": "User's full name", "age": "User's age"}
+        # Returns: {"name": "User's full name", "age": "age"}
         ```
     """
     descriptions: dict[str, str] = {}
@@ -61,16 +64,20 @@ def extract_field_descriptions(
             if "$ref" in field_schema:
                 ref_schema = resolve_ref(field_schema["$ref"], defs_dict)
                 if ref_schema:
-                    # Extract description from the field itself if present
+                    # Extract description from the field itself if present, otherwise use field name
                     if "description" in field_schema:
                         descriptions[field_path] = field_schema["description"]
+                    else:
+                        descriptions[field_path] = field_name
                     # Recursively extract from the referenced schema
                     extract_from_schema(ref_schema, field_path, defs_dict)
                 continue
 
-            # Extract description if present
+            # Extract description if present, otherwise use field name
             if "description" in field_schema:
                 descriptions[field_path] = field_schema["description"]
+            else:
+                descriptions[field_path] = field_name
 
             # Handle nested objects
             if "properties" in field_schema:
@@ -92,6 +99,128 @@ def extract_field_descriptions(
     defs = schema.get("$defs", {})
     extract_from_schema(schema, prefix, defs)
     return descriptions
+
+
+def extract_field_types(model: type[BaseModel], prefix: str = "") -> dict[str, str]:
+    """Extract field types from a Pydantic model recursively.
+
+    Args:
+        model: The Pydantic model class.
+        prefix: Prefix for nested field paths (used internally for recursion).
+
+    Returns:
+        Dictionary mapping field paths to their type names as strings.
+        Field paths use dot notation for nested fields (e.g., "user.name").
+        Types are converted to readable strings (e.g., "str", "int", "List[str]").
+
+    Example:
+        ```python
+        from pydantic import BaseModel
+        from typing import List
+
+        class User(BaseModel):
+            name: str
+            age: int
+            tags: List[str]
+
+        types = extract_field_types(User)
+        # Returns: {"name": "str", "age": "int", "tags": "List[str]"}
+        ```
+    """
+    types: dict[str, str] = {}
+
+    def format_type(type_hint: Any) -> str:
+        """Format a type hint as a readable string."""
+        # Handle Literal types
+        if type_hint is Literal or (
+            isinstance(type_hint, type)
+            and issubclass(type_hint, type)
+            and type_hint.__name__ == "Literal"
+        ):
+            # This shouldn't happen, but handle it
+            return "Literal"
+
+        # Check if it's a Literal type instance
+        origin = get_origin(type_hint)
+        if origin is Literal or (
+            hasattr(type_hint, "__origin__") and type_hint.__origin__ is Literal
+        ):
+            args = get_args(type_hint)
+            if args:
+                # Format literal values
+                literal_values = []
+                for arg in args:
+                    if isinstance(arg, str):
+                        literal_values.append(f'"{arg}"')
+                    else:
+                        literal_values.append(str(arg))
+                return f"Literal[{', '.join(literal_values)}]"
+            return "Literal"
+
+        # Handle Enum types
+        if isinstance(type_hint, type) and issubclass(type_hint, Enum):
+            enum_values = [
+                f'"{item.value}"' if isinstance(item.value, str) else str(item.value)
+                for item in type_hint
+            ]
+            return f"Enum[{', '.join(enum_values)}]"
+
+        if origin is None:
+            # Simple type
+            if isinstance(type_hint, type):
+                return type_hint.__name__
+            return str(type_hint)
+        else:
+            # Generic type (List, Optional, etc.)
+            args = get_args(type_hint)
+            if args:
+                args_str = ", ".join(format_type(arg) for arg in args)
+                origin_name = origin.__name__ if hasattr(origin, "__name__") else str(origin)
+                return f"{origin_name}[{args_str}]"
+            else:
+                origin_name = origin.__name__ if hasattr(origin, "__name__") else str(origin)
+                return origin_name
+
+    def extract_from_model(
+        model_cls: type[BaseModel],
+        current_prefix: str = "",
+    ) -> None:
+        """Recursively extract types from model fields."""
+        if not issubclass(model_cls, BaseModel):
+            return
+
+        annotations = getattr(model_cls, "__annotations__", {})
+        model_fields = getattr(model_cls, "model_fields", {})
+
+        for field_name in model_fields.keys():
+            field_path = f"{current_prefix}.{field_name}" if current_prefix else field_name
+            field_type = annotations.get(field_name)
+            if field_type is None:
+                continue
+
+            # Format the type as a string
+            type_str = format_type(field_type)
+            types[field_path] = type_str
+
+            # Handle nested BaseModel types
+            origin = get_origin(field_type)
+            if isinstance(field_type, type) and issubclass(field_type, BaseModel):
+                extract_from_model(field_type, field_path)
+            elif isinstance(field_type, type) and issubclass(field_type, Enum):
+                # Enum types are already handled in format_type, no need to recurse
+                pass
+            elif origin is not None:
+                # Check if any args are BaseModel subclasses
+                args = get_args(field_type)
+                for arg in args:
+                    if isinstance(arg, type) and issubclass(arg, BaseModel):
+                        extract_from_model(arg, field_path)
+                    elif isinstance(arg, type) and issubclass(arg, Enum):
+                        # Enum types are already handled in format_type
+                        pass
+
+    extract_from_model(model, prefix)
+    return types
 
 
 def apply_optimized_descriptions(
