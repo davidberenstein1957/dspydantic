@@ -104,10 +104,7 @@ class PydanticOptimizerModule(dspy.Module):
                             "\n\nAdditionally, here are the field descriptions for the structured information you are helping to extract:"
                             "\n" + "\n".join(field_desc_lines)
                         )
-                import pdb
 
-                pdb.set_trace()
-                print(instruction_prompt)
                 optimization_prompt = (
                     f"{original_prompt_marker}:\n{instruction_prompt}\n\n"
                     f"{rewrite_instructions_marker}:\n"
