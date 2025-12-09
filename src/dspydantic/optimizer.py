@@ -200,6 +200,7 @@ class PydanticOptimizer:
         optimizer: str | Teleprompter | None = None,
         train_split: float = 0.8,
         optimizer_kwargs: dict[str, Any] | None = None,
+        exclude_fields: list[str] | None = None,
     ) -> None:
         """Initialize the Pydantic optimizer.
 
@@ -254,6 +255,12 @@ class PydanticOptimizer:
                 to pass to the optimizer constructor. These will override default
                 parameters. For example: {"max_bootstrapped_demos": 8, "auto": "full"}.
                 Only used if `optimizer` is a string or None.
+            exclude_fields: Optional list of field paths to exclude from evaluation.
+                Field paths use dot notation for nested fields
+                (e.g., ["address.street", "metadata"]).
+                Fields matching these paths (or starting with them) will be excluded
+                from scoring. Only applies when using default evaluation functions
+                (not custom evaluate_fn).
 
         Raises:
             ValueError: If at least one example is not provided, or if optimizer string
@@ -266,6 +273,7 @@ class PydanticOptimizer:
         self.model = model
         self.examples = examples
         self.evaluate_fn = evaluate_fn
+        self.exclude_fields = exclude_fields
         self.system_prompt = system_prompt
         self.instruction_prompt = instruction_prompt
         self.lm = lm
@@ -417,6 +425,7 @@ class PydanticOptimizer:
             metric=metric,
             judge_lm=judge_lm,
             custom_judge_fn=custom_judge_fn,
+            exclude_fields=self.exclude_fields,
         )
 
     def _show_loading_window(

@@ -126,7 +126,8 @@ class PydanticOptimizerModule(dspy.Module):
                             field_desc_lines.append(f"- {key}: {value}")
                     if field_desc_lines:
                         field_descriptions_text = (
-                            "\n\nAdditionally, here are the field descriptions and types for the structured information you are helping to extract:"
+                            "\n\nAdditionally, here are the field descriptions and types "
+                            "for the structured information you are helping to extract:"
                             "\n" + "\n".join(field_desc_lines)
                         )
 
