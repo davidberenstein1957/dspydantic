@@ -6,9 +6,10 @@ from collections.abc import Callable
 from typing import Any, cast
 
 import dspy
+from deepdiff import DeepDiff
 from pydantic import BaseModel
 
-from dspydantic.extractor import apply_optimized_descriptions
+from dspydantic.extractor import apply_optimized_descriptions, extract_field_descriptions
 from dspydantic.types import Example
 from dspydantic.utils import convert_images_to_dspy_images, format_instruction_prompt_template
 
@@ -83,9 +84,12 @@ def default_judge_fn(
 
     judge_prompt_parts.append(
         "\nEvaluate the quality of the extracted data. Consider:\n"
-        "- Does it match the expected JSON schema structure?\n"
+        "- Does it match the expected JSON schema structure "
+        "(including nested dictionaries and lists)?\n"
         "- Are the field values reasonable and accurate?\n"
         "- Is the data complete?\n"
+        "- Are nested structures (lists, dictionaries) properly formatted "
+        "and complete?\n"
         "- Are there any obvious errors or inconsistencies?\n\n"
         "Respond with a JSON object containing a 'score' field (float between 0.0 and 1.0) "
         "and optionally a 'reasoning' field explaining your evaluation."
@@ -144,8 +148,10 @@ def default_evaluate_fn(
         system_prompt: Optional system prompt.
         instruction_prompt: Optional instruction prompt.
         metric: Comparison metric to use. Options:
-            - "exact": Exact string matching (default)
-            - "levenshtein": Levenshtein distance-based matching
+            - "exact": Exact matching using DeepDiff with deep_distance
+              for nested structures (default)
+            - "levenshtein": Levenshtein distance-based matching for primitives,
+              DeepDiff deep_distance for nested structures
         judge_lm: Optional separate LM to use as judge when expected_output is None.
         custom_judge_fn: Optional custom judge function to use when expected_output is None.
 
@@ -385,70 +391,114 @@ def default_evaluate_fn(
 
             return previous_row[-1]
 
-        # Recursive comparison function
-        def compare_dicts(
-            extracted: dict[str, Any], expected: dict[str, Any]
-        ) -> float:
-            """Compare extracted dict with expected dict recursively."""
-            if not isinstance(extracted, dict) or not isinstance(expected, dict):
-                if metric == "exact":
-                    return 1.0 if extracted == expected else 0.0
-                else:  # levenshtein
-                    str_extracted = str(extracted).strip()
-                    str_expected = str(expected).strip()
-                    if str_extracted == str_expected:
-                        return 1.0
-                    max_len = max(len(str_extracted), len(str_expected))
-                    if max_len == 0:
-                        return 1.0
-                    distance = levenshtein_distance(str_extracted, str_expected)
-                    similarity = 1.0 - (distance / max_len)
-                    return max(0.0, similarity)
-
-            total_fields = 0
-            field_scores = []
-
-            for key, expected_value in expected.items():
-                total_fields += 1
-                if key in extracted:
-                    extracted_value = extracted[key]
-                    if isinstance(expected_value, dict) and isinstance(
-                        extracted_value, dict
-                    ):
-                        # Recursive comparison for nested dicts
-                        nested_score = compare_dicts(extracted_value, expected_value)
-                        field_scores.append(nested_score)
-                    else:
-                        # Compare values based on metric
-                        str_extracted = str(extracted_value).strip()
-                        str_expected = str(expected_value).strip()
-
-                        if metric == "exact":
-                            field_score = 1.0 if str_extracted == str_expected else 0.0
-                        else:  # levenshtein
-                            if str_extracted == str_expected:
-                                field_score = 1.0
-                            else:
-                                max_len = max(len(str_extracted), len(str_expected))
-                                if max_len == 0:
-                                    field_score = 1.0
-                                else:
-                                    distance = levenshtein_distance(
-                                        str_extracted, str_expected
-                                    )
-                                    similarity = 1.0 - (distance / max_len)
-                                    field_score = max(0.0, similarity)
-                        field_scores.append(field_score)
+        # Helper function to get value from nested dict using dot notation path
+        def get_nested_value(data: dict[str, Any], path: str) -> Any:
+            """Get value from nested dictionary using dot notation path."""
+            keys = path.split(".")
+            value = data
+            for key in keys:
+                if isinstance(value, dict) and key in value:
+                    value = value[key]
                 else:
-                    # Field missing
-                    field_scores.append(0.0)
+                    return None
+            return value
 
-            # Return average score across all fields
-            return (
-                sum(field_scores) / total_fields if total_fields > 0 else 0.0
+        # Comparison function that handles nested structures using DeepDiff
+        def compare_values(extracted: Any, expected: Any) -> float:
+            """Compare extracted value with expected value.
+
+            Handles nested structures including dictionaries and lists using DeepDiff.
+            """
+            # Check if we have nested structures (dict or list)
+            has_nested_structures = isinstance(expected, (dict, list)) or isinstance(
+                extracted, (dict, list)
             )
 
-        score = compare_dicts(extracted_data, expected)
+            # For nested structures, use DeepDiff's deep_distance for accurate comparison
+            if has_nested_structures:
+                diff = DeepDiff(
+                    expected,
+                    extracted,
+                    ignore_order=False,
+                    verbose_level=0,
+                    get_deep_distance=True,
+                )
+                # If diff is empty, structures are identical
+                if not diff:
+                    return 1.0
+
+                deep_distance = diff.get("deep_distance", 1.0)
+
+                # For exact metric, return binary result (1.0 if identical, 0.0 otherwise)
+                if metric == "exact":
+                    return 1.0 if deep_distance == 0.0 else 0.0
+
+                # For levenshtein metric, use deep_distance as similarity score
+                # DeepDiff's deep_distance is between 0 (identical) and 1 (very different)
+                # Convert to similarity score: 1 - distance
+                similarity = 1.0 - deep_distance
+                return max(0.0, min(1.0, similarity))
+
+            # For primitive types (non-nested), handle based on metric
+            if metric == "exact":
+                # Exact matching for primitives
+                return 1.0 if extracted == expected else 0.0
+
+            # For levenshtein metric with primitives, use Levenshtein distance
+            str_extracted = str(extracted).strip()
+            str_expected = str(expected).strip()
+
+            if str_extracted == str_expected:
+                return 1.0
+
+            max_len = max(len(str_extracted), len(str_expected))
+            if max_len == 0:
+                return 1.0
+
+            distance = levenshtein_distance(str_extracted, str_expected)
+            similarity = 1.0 - (distance / max_len)
+            return max(0.0, similarity)
+
+        # Get all field paths from the model schema
+        all_field_paths = list(extract_field_descriptions(model).keys())
+
+        # Filter to only leaf fields (fields that don't have nested sub-fields)
+        # This avoids double-counting when comparing both parent and child fields
+        leaf_field_paths = []
+        for field_path in all_field_paths:
+            # Check if this field path is a prefix of any other field path
+            is_leaf = True
+            for other_path in all_field_paths:
+                if other_path != field_path and other_path.startswith(f"{field_path}."):
+                    is_leaf = False
+                    break
+            if is_leaf:
+                leaf_field_paths.append(field_path)
+
+        # Compute distance for each field and average
+        if leaf_field_paths:
+            field_scores = []
+            for field_path in leaf_field_paths:
+                extracted_value = get_nested_value(extracted_data, field_path)
+                expected_value = get_nested_value(expected, field_path)
+
+                # If both values are None, consider it a match (field not present)
+                if extracted_value is None and expected_value is None:
+                    field_scores.append(1.0)
+                # If one is None and the other isn't, it's a mismatch
+                elif extracted_value is None or expected_value is None:
+                    field_scores.append(0.0)
+                else:
+                    # Compare the values for this field
+                    field_score = compare_values(extracted_value, expected_value)
+                    field_scores.append(field_score)
+
+            # Average all field scores
+            score = sum(field_scores) / len(field_scores) if field_scores else 0.0
+        else:
+            # Fallback to comparing entire structures if no field paths found
+            score = compare_values(extracted_data, expected)
+
         return max(0.0, min(1.0, score))  # Ensure score is between 0.0 and 1.0
 
     return evaluate
