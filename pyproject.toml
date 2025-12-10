@@ -23,6 +23,8 @@ dependencies = [
     "pydantic>=2.0.0",
     "dspy>=3.0.4",
     "deepdiff>=8.0.0",
+    "pillow>=10.0.0",
+    "pdf2image>=1.16.0",
 ]
 
 [project.optional-dependencies]
@@ -31,17 +33,6 @@ dev = [
     "black>=24.0.0",
     "ruff>=0.1.0",
     "datasets",
-]
-images = [
-    "pillow>=10.0.0",
-]
-pdf = [
-    "pdf2image>=1.16.0",
-    "pillow>=10.0.0",
-]
-all = [
-    "pillow>=10.0.0",
-    "pdf2image>=1.16.0",
 ]
 
 [build-system]

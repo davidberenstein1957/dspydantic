@@ -461,31 +461,22 @@ wheels = [
 
 [[package]]
 name = "dspydantic"
-version = "0.0.5"
+version = "0.0.7"
 source = { editable = "." }
 dependencies = [
     { name = "deepdiff" },
     { name = "dspy" },
+    { name = "pdf2image" },
+    { name = "pillow" },
     { name = "pydantic" },
 ]
 
 [package.optional-dependencies]
-all = [
-    { name = "pdf2image" },
-    { name = "pillow" },
-]
 dev = [
     { name = "black" },
     { name = "datasets" },
     { name = "pytest" },
     { name = "ruff" },
-]
-images = [
-    { name = "pillow" },
-]
-pdf = [
-    { name = "pdf2image" },
-    { name = "pillow" },
 ]
 
 [package.metadata]
@@ -494,11 +485,8 @@ requires-dist = [
     { name = "datasets", marker = "extra == 'dev'" },
     { name = "deepdiff", specifier = ">=8.0.0" },
     { name = "dspy", specifier = ">=3.0.4" },
-    { name = "pdf2image", marker = "extra == 'all'", specifier = ">=1.16.0" },
-    { name = "pdf2image", marker = "extra == 'pdf'", specifier = ">=1.16.0" },
-    { name = "pillow", marker = "extra == 'all'", specifier = ">=10.0.0" },
-    { name = "pillow", marker = "extra == 'images'", specifier = ">=10.0.0" },
-    { name = "pillow", marker = "extra == 'pdf'", specifier = ">=10.0.0" },
+    { name = "pdf2image", specifier = ">=1.16.0" },
+    { name = "pillow", specifier = ">=10.0.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.4.2" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },

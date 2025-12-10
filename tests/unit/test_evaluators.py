@@ -431,3 +431,108 @@ def test_field_by_field_comparison_extra_fields(mock_lm: dspy.LM) -> None:
 
     # Extra fields shouldn't affect the score (we only compare schema fields)
     assert score == 1.0
+
+
+def test_multi_image_signature_single_image(mock_lm: dspy.LM) -> None:
+    """Test that single image uses correct signature."""
+    from unittest.mock import MagicMock, patch
+
+    example = Example(
+        text="Extract info",
+        image_base64="base64_image1",
+        expected_output={"name": "John Doe"},
+    )
+
+    evaluate = default_evaluate_fn(
+        lm=mock_lm,
+        model=SimpleUser,
+        system_prompt=None,
+        instruction_prompt=None,
+        metric="exact",
+    )
+
+    with (
+        patch("dspydantic.evaluators.dspy.ChainOfThought") as mock_chain_class,
+        patch("dspydantic.evaluators.convert_images_to_dspy_images") as mock_convert,
+    ):
+        mock_image = MagicMock()
+        mock_convert.return_value = [mock_image]
+
+        mock_instance = MagicMock()
+        mock_result = MagicMock()
+        mock_result.json_output = '{"name": "John Doe"}'
+        mock_instance.return_value = mock_result
+        mock_chain_class.return_value = mock_instance
+
+        evaluate(
+            example=example,
+            optimized_descriptions={},
+            optimized_system_prompt=None,
+            optimized_instruction_prompt=None,
+        )
+
+        # Verify signature was called with single image signature
+        call_args = mock_chain_class.call_args[0][0]
+        assert call_args == "prompt, image -> json_output"
+
+        # Verify extractor was called with single image
+        extractor_call_kwargs = mock_instance.call_args[1]
+        assert "image" in extractor_call_kwargs
+        assert extractor_call_kwargs["image"] == mock_image
+
+
+def test_multi_image_signature_multiple_images(mock_lm: dspy.LM) -> None:
+    """Test that multiple images use list[dspy.Image] signature."""
+    from unittest.mock import MagicMock, patch
+
+    # Create example with multiple images by manually setting input_data
+    # since Example API doesn't directly support multiple images
+    example = Example(
+        text="Extract info",
+        image_base64="base64_img1",  # Will be overridden
+        expected_output={"name": "John Doe"},
+    )
+    # Manually set multiple images in input_data
+    example.input_data = {
+        "text": "Extract info",
+        "images": ["base64_img1", "base64_img2", "base64_img3"],
+    }
+
+    evaluate = default_evaluate_fn(
+        lm=mock_lm,
+        model=SimpleUser,
+        system_prompt=None,
+        instruction_prompt=None,
+        metric="exact",
+    )
+
+    with (
+        patch("dspydantic.evaluators.dspy.ChainOfThought") as mock_chain_class,
+        patch("dspydantic.evaluators.convert_images_to_dspy_images") as mock_convert,
+    ):
+        mock_image1 = MagicMock()
+        mock_image2 = MagicMock()
+        mock_image3 = MagicMock()
+        mock_convert.return_value = [mock_image1, mock_image2, mock_image3]
+
+        mock_instance = MagicMock()
+        mock_result = MagicMock()
+        mock_result.json_output = '{"name": "John Doe"}'
+        mock_instance.return_value = mock_result
+        mock_chain_class.return_value = mock_instance
+
+        evaluate(
+            example=example,
+            optimized_descriptions={},
+            optimized_system_prompt=None,
+            optimized_instruction_prompt=None,
+        )
+
+        # Verify signature was called with list[dspy.Image]
+        call_args = mock_chain_class.call_args[0][0]
+        assert call_args == "prompt, images: list[dspy.Image] -> json_output"
+
+        # Verify extractor was called with images list
+        extractor_call_kwargs = mock_instance.call_args[1]
+        assert "images" in extractor_call_kwargs
+        assert extractor_call_kwargs["images"] == [mock_image1, mock_image2, mock_image3]

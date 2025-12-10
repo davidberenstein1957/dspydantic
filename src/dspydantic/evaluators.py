@@ -11,7 +11,11 @@ from pydantic import BaseModel
 
 from dspydantic.extractor import apply_optimized_descriptions, extract_field_descriptions
 from dspydantic.types import Example
-from dspydantic.utils import convert_images_to_dspy_images, format_instruction_prompt_template
+from dspydantic.utils import (
+    build_image_signature_and_kwargs,
+    convert_images_to_dspy_images,
+    format_instruction_prompt_template,
+)
 
 
 def default_judge_fn(
@@ -279,24 +283,13 @@ def default_evaluate_fn(
         # Use DSPy's ChainOfThought for extraction
         # This will use the globally configured LM from dspy.settings
         # If we have dspy.Image objects, we can pass them directly to the signature
-        if dspy_images and len(dspy_images) > 0:
-            # For vision models, create a signature that accepts images
-            # DSPy can handle Image objects directly in signatures
-            # For multiple images, pass them as a list or use the first one
-            if len(dspy_images) == 1:
-                signature = "prompt, image -> json_output"
-                extractor = dspy.ChainOfThought(signature)
-                result = extractor(prompt=json_prompt, image=dspy_images[0])
-            else:
-                # For multiple images, pass as a list
-                # Note: DSPy may handle this differently depending on the LM
-                signature = "prompt, images -> json_output"
-                extractor = dspy.ChainOfThought(signature)
-                result = extractor(prompt=json_prompt, images=dspy_images)
-        else:
-            signature = "prompt -> json_output"
-            extractor = dspy.ChainOfThought(signature)
-            result = extractor(prompt=json_prompt)
+        # Build signature with proper multi-image support using list[dspy.Image]
+        signature, extractor_kwargs = build_image_signature_and_kwargs(dspy_images)
+        extractor = dspy.ChainOfThought(signature)
+        # Set the prompt and call extractor with image kwargs
+        extractor_kwargs["prompt"] = json_prompt
+
+        result = extractor(**extractor_kwargs)
 
         # Extract output text
         if hasattr(result, "json_output"):
