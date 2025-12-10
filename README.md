@@ -61,37 +61,13 @@ OptimizedTransactionRecord = create_optimized_model(
     TransactionRecord,
     result.optimized_descriptions
 )
+print(result.optimized_descriptions)
+print(result.optimized_system_prompt)
+print(result.optimized_instruction_prompt)
 # Use OptimizedTransactionRecord just like your original model, but with better accuracy!
 ```
 
-**That's it!** Your model now has optimized descriptions that extract data more accurately—typically 20-40% improvement in extraction accuracy.
-
-### Excluding Fields from Evaluation
-
-If you have fields that shouldn't affect the evaluation score (e.g., metadata, timestamps, or fields you're not optimizing), you can exclude them:
-
-```python
-from pydantic import BaseModel, Field
-
-class PatientRecord(BaseModel):
-    patient_name: str = Field(description="Patient full name")
-    urgency: Literal["low", "medium", "high", "critical"] = Field(
-        description="Urgency level of the case"
-    )
-    diagnosis: str = Field(description="Primary diagnosis")
-    metadata: str = Field(description="Internal metadata")  # Not important for evaluation
-    timestamp: str = Field(description="Record timestamp")  # Not important for evaluation
-
-optimizer = PydanticOptimizer(
-    model=PatientRecord,
-    examples=examples,
-    model_id="gpt-4o",
-    exclude_fields=["metadata", "timestamp"],  # These fields won't affect scoring
-)
-result = optimizer.optimize()
-```
-
-Excluded fields will still be extracted by the model, but they won't be included in the evaluation score calculation. This is useful when you have fields that are not critical for optimization or that you don't want to optimize for.
+**That's it!** Your model now has optimized descriptions that extract data more accurately.
 
 ## 📦 Installation
 
@@ -107,11 +83,11 @@ uv pip install dspydantic
 
 ## 🌟 Key Features
 
-- **Auto-optimization**: Finds best field descriptions automatically—20-40% accuracy improvement
+- **Auto-optimization**: Finds best field descriptions automatically
 - **Simple input**: Just examples (text/images/PDFs) + your Pydantic model
 - **Better output**: Optimized model ready to use with improved accuracy
 - **Template prompts**: Dynamic prompts with `{placeholders}` for context-aware extraction
-- **Enum & Literal support**: Optimize classification models—often 70% → 90%+ accuracy
+- **Enum & Literal support**: Optimize classification models
 - **Multiple formats**: Text, images, PDFs—works with any input type
 - **Smart defaults**: Auto-selects best optimizer, no configuration needed
 
@@ -187,7 +163,7 @@ examples = [
 from dspydantic import PydanticOptimizer
 
 optimizer = PydanticOptimizer(
-    model=Invoice,
+    model=ProductInfo,
     examples=examples,
     model_id="gpt-4o"
 )
@@ -255,14 +231,98 @@ product = OptimizedProductInfo.model_validate_json(
 
 **That's it!** Your optimized model extracts data more accurately with zero code changes.
 
-## Working with Images
+## 🏭 Real-World Usage Scenarios
 
-**Easy input**: Just provide image paths + expected output:
+### Financial Document Processing
+
+```python
+class Transaction(BaseModel):
+    broker: str = Field(description="Financial institution")
+    amount: str = Field(description="Transaction amount")
+    security: str = Field(description="Financial instrument")
+    transaction_type: Literal["equity", "bond", "option"] = Field(description="Transaction type")
+
+examples = [
+    Example(
+        text="Goldman Sachs processed a $2.5M equity trade for Tesla Inc. on March 15, 2024.",
+        expected_output=Transaction(broker="Goldman Sachs", amount="$2.5M", security="Tesla Inc.", transaction_type="equity")
+    ),
+    Example(
+        text="JPMorgan executed $500K bond purchase for Apple Corp dated 2024-03-20.",
+        expected_output=Transaction(broker="JPMorgan", amount="$500K", security="Apple Corp", transaction_type="bond")
+    ),
+]
+```
+
+### Healthcare Information Extraction
+
+```python
+from pydantic import BaseModel, Field
+from dspydantic import Example
+
+class MedicalRecord(BaseModel):
+    patient_name: str = Field(description="Patient name")
+    symptoms: list[str] = Field(description="Symptoms")
+    medications: list[str] = Field(description="Prescribed medications")
+
+examples = [
+    Example(
+        text="Patient: Sarah Johnson, 34. Symptoms: chest pain, shortness of breath. Prescribed: Lisinopril 10mg daily.",
+        expected_output=MedicalRecord(
+            patient_name="Sarah Johnson",
+            symptoms=["chest pain", "shortness of breath"],
+            medications=["Lisinopril 10mg daily"]
+        )
+    ),
+    Example(
+        text="Patient: Michael Chen, 45. Symptoms: headache, fatigue. Prescribed: Ibuprofen 400mg twice daily.",
+        expected_output=MedicalRecord(
+            patient_name="Michael Chen",
+            symptoms=["headache", "fatigue"],
+            medications=["Ibuprofen 400mg twice daily"]
+        )
+    ),
+]
+```
+
+### Legal Contract Analysis
 
 ```python
 from pydantic import BaseModel, Field
 from typing import Literal
-from dspydantic import Example, PydanticOptimizer, create_optimized_model
+from dspydantic import Example
+
+class ContractAnalysis(BaseModel):
+    parties: list[str] = Field(description="Contracting parties")
+    effective_date: str = Field(description="Effective date")
+    monthly_fee: str = Field(description="Monthly fee")
+    contract_type: Literal["service", "employment", "nda"] = Field(description="Contract type")
+
+examples = [
+    Example(
+        text="Service Agreement between TechCorp LLC and DataSystems Inc., effective January 1, 2024. Monthly fee: $15,000.",
+        expected_output=ContractAnalysis(
+            parties=["TechCorp LLC", "DataSystems Inc."],
+            effective_date="January 1, 2024",
+            monthly_fee="$15,000",
+            contract_type="service"
+        )
+    ),
+]
+```
+
+## Advanced Usage
+
+### Other modalities
+
+#### Working with Images
+
+Just provide image paths + expected output:
+
+```python
+from pydantic import BaseModel, Field
+from typing import Literal
+from dspydantic import Example
 
 class DigitClassification(BaseModel):
     digit: Literal[0, 1, 2, 3, 4, 5, 6, 7, 8, 9] = Field(description="Digit 0-9")
@@ -277,400 +337,139 @@ examples = [
         expected_output=DigitClassification(digit=3)
     ),
 ]
-
-optimizer = PydanticOptimizer(
-    model=DigitClassification,
-    examples=examples,
-    model_id="gpt-4o"
-)
-result = optimizer.optimize()  # Gain: 75% → 94% accuracy
-
-OptimizedDigit = create_optimized_model(
-    DigitClassification,
-    result.optimized_descriptions
-)
 ```
 
-## Working with PDFs
+#### Working with PDFs
 
-**Easy input**: Just provide PDF paths + expected output:
+Just provide PDF paths + expected output:
 
 ```python
+from pydantic import BaseModel, Field
+from dspydantic import Example
+
+class Invoice(BaseModel):
+    invoice_number: str = Field(description="Invoice number")
+    total_amount: float = Field(description="Total amount of the invoice")
+    vendor: str = Field(description="Vendor or supplier name")
+    date: str = Field(description="Invoice date")
+
 examples = [
     Example(
         pdf_path="invoice_001.pdf",
         expected_output=Invoice(
             invoice_number="INV-2024-001",
-            total_amount=1234.56
+            total_amount=1234.56,
+            vendor="Acme Corporation",
+            date="2024-03-15"
         )
     ),
 ]
 ```
 
-## Template Usage with Dynamic Prompts
+### Optimizing Prompt Templates
 
-Use template prompts with placeholders that are automatically filled from example data dictionaries. This is perfect for creating dynamic, context-aware prompts:
+Optional `system_prompt` and `instruction_prompt` are optimized along with field descriptions. Use template prompts with placeholders that are automatically filled from example data dictionaries:
 
 ```python
 from pydantic import BaseModel, Field
 from typing import Literal
-from dspydantic import Example, PydanticOptimizer, create_optimized_model
+from dspydantic import Example
 
 class ProductReview(BaseModel):
-    sentiment: Literal["positive", "negative", "neutral"] = Field(
-        description="Overall sentiment of the review"
-    )
-    rating: int = Field(description="Rating from 1 to 5")
-    aspects: list[Literal["camera", "performance", "battery", "display", "price"]] = Field(
-        description="Product aspects mentioned"
-    )
+    sentiment: Literal["positive", "negative", "neutral"] = Field(description="Review sentiment")
+    rating: int = Field(description="Rating 1-5")
+    aspects: list[Literal["camera", "performance", "battery"]] = Field(description="Product aspects")
 
-# Input: dictionary with placeholders
 examples = [
     Example(
-        text={
-            "review": "Amazing camera quality and fast performance, but battery drains quickly. Overall great phone!",
-            "customer": "Sarah Chen",
-            "product": "iPhone 15 Pro",
-            "category": "smartphone"
-        },
-        expected_output=ProductReview(
-            sentiment="positive",
-            rating=4,
-            aspects=["camera", "performance", "battery"]
-        )
+        text={"review": "Amazing camera quality and fast performance!", "product": "iPhone 15 Pro", "category": "smartphone"},
+        expected_output=ProductReview(sentiment="positive", rating=4, aspects=["camera", "performance"])
     ),
     Example(
-        text={
-            "review": "Overpriced and poor display quality. Not worth the money.",
-            "customer": "Mike Johnson",
-            "product": "Samsung Galaxy S24",
-            "category": "smartphone"
-        },
-        expected_output=ProductReview(
-            sentiment="negative",
-            rating=2,
-            aspects=["price", "display"]
-        )
+        text={"review": "Poor battery life and overpriced.", "product": "Samsung Galaxy S24", "category": "smartphone"},
+        expected_output=ProductReview(sentiment="negative", rating=2, aspects=["battery"])
     ),
 ]
 
-# Template prompt with {placeholders} - automatically filled from dict keys
+# Template prompts with {placeholders} are automatically filled from dict keys
 optimizer = PydanticOptimizer(
     model=ProductReview,
     examples=examples,
-    system_prompt="You are an expert product review analyst specializing in {category} reviews.",
-    instruction_prompt="Analyze the {category} review from {customer} about {product}: {review}",
+    system_prompt="You are an expert analyst specializing in {category} reviews.",
+    instruction_prompt="Analyze the {category} review about {product}: {review}",
     model_id="gpt-4o"
 )
-
 result = optimizer.optimize()
-
-# The optimizer will automatically format the prompt for each example:
-# Example 1: "Analyze the smartphone review from Sarah Chen about iPhone 15 Pro: Amazing camera..."
-# Example 2: "Analyze the smartphone review from Mike Johnson about Samsung Galaxy S24: Overpriced..."
+# Access: result.optimized_system_prompt, result.optimized_instruction_prompt, result.optimized_descriptions
 ```
 
-**Output**: Each example gets a customized prompt automatically—no manual formatting needed! Perfect for multi-domain extraction where context matters.
+Placeholders like `{category}`, `{product}`, `{review}` are automatically filled from each example's text dictionary. Both prompts are optimized along with field descriptions.
 
-## Working with Enums and Literals
+### Working with Enums and Literals
 
-Use `Literal` or `Enum` in your model—works automatically and is used to optimize the extraction process. Perfect for classification tasks like sentiment analysis, document types, or status fields.
+`Literal` and `Enum` types work automatically and are taken into account for optimization.
 
 ```python
 from pydantic import BaseModel, Field
 from typing import Literal
-from dspydantic import Example, PydanticOptimizer, create_optimized_model
+from dspydantic import Example
 
 class ReviewAnalysis(BaseModel):
-    sentiment: Literal["positive", "negative", "neutral"] = Field(
-        description="Overall sentiment of the review"
-    )
-    aspects: list[Literal["camera", "performance", "battery", "display", "price"]] = Field(
-        description="Product aspects mentioned in the review"
-    )
-    rating: int = Field(description="Rating from 1 to 5")
+    sentiment: Literal["positive", "negative", "neutral"] = Field(description="Review sentiment")
+    aspects: list[Literal["camera", "performance", "battery", "display", "price"]] = Field(description="Product aspects")
+    rating: int = Field(description="Rating 1-5")
 
 examples = [
     Example(
-        text="Great camera quality and amazing performance, but terrible battery life. Overall 4/5.",
-        expected_output=ReviewAnalysis(
-            sentiment="positive",
-            aspects=["camera", "performance", "battery"],
-            rating=4
-        )
+        text="Great camera quality and amazing performance. Overall 4/5.",
+        expected_output=ReviewAnalysis(sentiment="positive", aspects=["camera", "performance"], rating=4)
     ),
     Example(
         text="Poor display quality and overpriced. Not worth it. Rating: 2 stars.",
-        expected_output=ReviewAnalysis(
-            sentiment="negative",
-            aspects=["display", "price"],
-            rating=2
-        )
+        expected_output=ReviewAnalysis(sentiment="negative", aspects=["display", "price"], rating=2)
     ),
 ]
-
-optimizer = PydanticOptimizer(
-    model=ReviewAnalysis,
-    examples=examples,
-    system_prompt="You are an expert product review analyst.",
-    instruction_prompt="Analyze the product review and extract sentiment, mentioned aspects, and rating.",
-    evaluate_fn="exact",
-    model_id="gpt-4o"
-)
-
-result = optimizer.optimize()
-
-OptimizedReviewAnalysis = create_optimized_model(
-    ReviewAnalysis,
-    result.optimized_descriptions
-)
 ```
 
-**Output**: Optimized descriptions help distinguish between similar categories automatically—often improving classification accuracy from 70% to 90%+!
+### Excluding Fields from Evaluation
 
-## 🏭 Real-World Usage Scenarios
-
-### Financial Document Processing
-
-Extract structured financial data from transaction reports, trade confirmations, and financial statements:
+If you have fields that shouldn't affect the evaluation score (e.g., metadata, timestamps, or fields you're not optimizing), you can exclude them:
 
 ```python
 from pydantic import BaseModel, Field
-from typing import Literal
-from dspydantic import Example, PydanticOptimizer, create_optimized_model
 
-class Transaction(BaseModel):
-    broker: str = Field(description="Financial institution or brokerage firm")
-    amount: str = Field(description="Transaction amount with currency")
-    security: str = Field(description="Stock, bond, or financial instrument")
-    date: str = Field(description="Transaction date")
-    commission: str = Field(description="Fees or commission charged")
-    status: str = Field(description="Transaction status")
-    transaction_type: Literal["equity", "bond", "option", "future", "forex"] = Field(
-        description="Type of financial instrument"
+class PatientRecord(BaseModel):
+    patient_name: str = Field(description="Patient full name")
+    urgency: Literal["low", "medium", "high", "critical"] = Field(
+        description="Urgency level of the case"
     )
-
-examples = [
-    Example(
-        text="Transaction Report: Goldman Sachs processed a $2.5M equity trade for Tesla Inc. on March 15, 2024. Commission: $1,250. Status: Completed.",
-        expected_output=Transaction(
-            broker="Goldman Sachs",
-            amount="$2.5M",
-            security="Tesla Inc.",
-            date="March 15, 2024",
-            commission="$1,250",
-            status="Completed",
-            transaction_type="equity"
-        )
-    ),
-    Example(
-        text="JPMorgan executed $500K bond purchase for Apple Corp dated 2024-03-20. Fee: $500. Status: Pending settlement.",
-        expected_output=Transaction(
-            broker="JPMorgan",
-            amount="$500K",
-            security="Apple Corp",
-            date="2024-03-20",
-            commission="$500",
-            status="Pending settlement",
-            transaction_type="bond"
-        )
-    ),
-]
+    diagnosis: str = Field(description="Primary diagnosis")
+    metadata: str = Field(description="Internal metadata")  # Not important for evaluation
+    timestamp: str = Field(description="Record timestamp")  # Not important for evaluation
 
 optimizer = PydanticOptimizer(
-    model=Transaction,
+    model=PatientRecord,
     examples=examples,
-    system_prompt="You are a financial document analysis assistant specializing in transaction extraction.",
-    instruction_prompt="Extract all transaction details from the financial report.",
-    model_id="gpt-4o"
+    model_id="gpt-4o",
+    exclude_fields=["metadata", "timestamp"],  # These fields won't affect scoring
 )
-
 result = optimizer.optimize()
-OptimizedTransaction = create_optimized_model(Transaction, result.optimized_descriptions)
 ```
 
-### Healthcare Information Extraction
+Excluded fields will still be extracted by the model, but they won't be included in the evaluation score calculation. This is useful when you have fields that are not critical for optimization or that you don't want to optimize for.
 
-Extract patient information, prescriptions, and medical data from clinical notes:
+### Nested Models
+
+Nested models work automatically and are taken into account for optimization. Field paths like `"address.street"` are handled automatically:
 
 ```python
 from pydantic import BaseModel, Field
-from typing import Literal
+from dspydantic import Example
 
-class PatientInfo(BaseModel):
-    name: str = Field(description="Patient full name")
-    age: str = Field(description="Patient age")
-    symptoms: list[str] = Field(description="Reported symptoms or complaints")
-
-class Prescription(BaseModel):
-    medication: str = Field(description="Drug or medication name")
-    dosage: str = Field(description="Dosage amount and frequency")
-    frequency: str = Field(description="How often to take the medication")
-
-class MedicalRecord(BaseModel):
-    patient_info: PatientInfo = Field(description="Patient information")
-    prescriptions: list[Prescription] = Field(description="Prescribed medications")
-    follow_up: str = Field(description="Follow-up appointment information")
-
-examples = [
-    Example(
-        text=(
-            "Patient: Sarah Johnson, 34, presented with acute chest pain and shortness of breath. "
-            "Prescribed: Lisinopril 10mg daily, Metoprolol 25mg twice daily. "
-            "Follow-up scheduled for next Tuesday."
-        ),
-        expected_output=MedicalRecord(
-            patient_info=PatientInfo(
-                name="Sarah Johnson",
-                age="34",
-                symptoms=["acute chest pain", "shortness of breath"]
-            ),
-            prescriptions=[
-                Prescription(medication="Lisinopril", dosage="10mg", frequency="daily"),
-                Prescription(medication="Metoprolol", dosage="25mg", frequency="twice daily")
-            ],
-            follow_up="next Tuesday"
-        )
-    ),
-]
-
-optimizer = PydanticOptimizer(
-    model=MedicalRecord,
-    examples=examples,
-    system_prompt="You are a medical information extraction assistant.",
-    instruction_prompt="Extract patient information, prescriptions, and follow-up details from the medical record.",
-    model_id="gpt-4o"
-)
-
-result = optimizer.optimize()
-OptimizedMedicalRecord = create_optimized_model(MedicalRecord, result.optimized_descriptions)
-```
-
-### Legal Contract Analysis
-
-Extract structured information from legal contracts and service agreements:
-
-```python
-from pydantic import BaseModel, Field
-from typing import Literal
-
-class ContractTerms(BaseModel):
-    parties: list[str] = Field(description="Contracting parties involved")
-    effective_date: str = Field(description="Contract effective date")
-    monthly_fee: str = Field(description="Monthly payment amount")
-    term_length: str = Field(description="Contract duration")
-    renewal: Literal["automatic", "manual", "none"] = Field(
-        description="Renewal type"
-    )
-    termination_notice: str = Field(description="Termination notice requirements")
-
-class ContractAnalysis(BaseModel):
-    contract_type: Literal["service", "employment", "nda", "partnership"] = Field(
-        description="Type of contract"
-    )
-    terms: ContractTerms = Field(description="Contract terms and conditions")
-
-examples = [
-    Example(
-        text=(
-            "Service Agreement between TechCorp LLC and DataSystems Inc., effective January 1, 2024. "
-            "Monthly fee: $15,000. Contract term: 24 months with automatic renewal. "
-            "Termination clause: 30-day written notice required."
-        ),
-        expected_output=ContractAnalysis(
-            contract_type="service",
-            terms=ContractTerms(
-                parties=["TechCorp LLC", "DataSystems Inc."],
-                effective_date="January 1, 2024",
-                monthly_fee="$15,000",
-                term_length="24 months",
-                renewal="automatic",
-                termination_notice="30-day written notice"
-            )
-        )
-    ),
-]
-
-optimizer = PydanticOptimizer(
-    model=ContractAnalysis,
-    examples=examples,
-    system_prompt="You are a legal document analysis assistant.",
-    instruction_prompt="Extract contract type and all terms from the service agreement.",
-    model_id="gpt-4o"
-)
-
-result = optimizer.optimize()
-OptimizedContractAnalysis = create_optimized_model(ContractAnalysis, result.optimized_descriptions)
-```
-
-### Knowledge Graph Construction
-
-Extract entities and relationships for building knowledge graphs:
-
-```python
-from pydantic import BaseModel, Field
-from typing import Literal
-
-class Entity(BaseModel):
-    name: str = Field(description="Entity name")
-    entity_type: Literal["person", "organization", "location", "product"] = Field(
-        description="Type of entity"
-    )
-
-class Relation(BaseModel):
-    subject: str = Field(description="Subject entity name")
-    relation_type: Literal["founded", "acquired", "located_in", "works_for"] = Field(
-        description="Type of relationship"
-    )
-    object: str = Field(description="Object entity name")
-
-class KnowledgeGraph(BaseModel):
-    entities: list[Entity] = Field(description="Extracted entities")
-    relations: list[Relation] = Field(description="Extracted relationships")
-
-examples = [
-    Example(
-        text=(
-            "Elon Musk founded SpaceX in 2002. SpaceX is located in Hawthorne, California. "
-            "SpaceX acquired Swarm Technologies in 2021."
-        ),
-        expected_output=KnowledgeGraph(
-            entities=[
-                Entity(name="Elon Musk", entity_type="person"),
-                Entity(name="SpaceX", entity_type="organization"),
-                Entity(name="Hawthorne, California", entity_type="location"),
-                Entity(name="Swarm Technologies", entity_type="organization"),
-            ],
-            relations=[
-                Relation(subject="Elon Musk", relation_type="founded", object="SpaceX"),
-                Relation(subject="SpaceX", relation_type="located_in", object="Hawthorne, California"),
-                Relation(subject="SpaceX", relation_type="acquired", object="Swarm Technologies"),
-            ]
-        )
-    ),
-]
-
-optimizer = PydanticOptimizer(
-    model=KnowledgeGraph,
-    examples=examples,
-    system_prompt="You are a knowledge graph extraction assistant.",
-    instruction_prompt="Extract all entities and their relationships from the text.",
-    model_id="gpt-4o"
-)
-
-result = optimizer.optimize()
-OptimizedKnowledgeGraph = create_optimized_model(KnowledgeGraph, result.optimized_descriptions)
-```
-
-## Nested Models
-
-Nested models work automatically—no special handling needed.
-
-```python
 class Address(BaseModel):
     street: str = Field(description="Street")
     city: str = Field(description="City")
+    zip_code: str = Field(description="ZIP code")
 
 class Customer(BaseModel):
     name: str = Field(description="Name")
@@ -678,204 +477,24 @@ class Customer(BaseModel):
 
 examples = [
     Example(
-        text="Jane Smith, 456 Oak Ave, San Francisco",
+        text="Jane Smith, 456 Oak Ave, San Francisco, CA 94102",
         expected_output=Customer(
             name="Jane Smith",
-            address=Address(
-                street="456 Oak Ave",
-                city="San Francisco"
-            )
+            address=Address(street="456 Oak Ave", city="San Francisco", zip_code="94102")
         )
     ),
 ]
-
-# Field paths automatically handled: "name", "address.street", "address.city"
 ```
 
-## Custom Evaluation
+### Evaluation Options
 
-Provide your own evaluation function if needed.
+#### Built-in Evaluation
 
-```python
-def evaluate(
-    example,
-    optimized_descriptions,
-    system_prompt,
-    instruction_prompt
-) -> float:
-    # Your custom logic - returns score 0.0 to 1.0
-    return 0.85
-
-optimizer = PydanticOptimizer(
-    model=Customer,
-    examples=examples,
-    evaluate_fn=evaluate,  # Use custom evaluation
-    model_id="gpt-4o"
-)
-```
-
-## Evaluation Without Expected Output (LLM Judge)
-
-When you don't have ground truth expected outputs, you can use an LLM as a judge to evaluate the quality of extracted data. This is useful when:
-
-- You have unlabeled data—optimize on real-world examples without manual labeling
-- You want to evaluate based on quality rather than exact matching—useful for subjective or nuanced extractions
-- You need more nuanced evaluation criteria—e.g., "is this a reasonable extraction?" rather than exact match
-
-### Using Default LLM Judge
-
-When `expected_output` is `None`, the optimizer automatically uses the same LLM as a judge. Perfect for unlabeled data or when you want quality-based evaluation:
+Use built-in options: `"exact"`, `"levenshtein"`, `"exact-hitl"`, `"levenshtein-hitl"`:
 
 ```python
-from pydantic import BaseModel, Field
-from typing import Literal
+from dspydantic import PydanticOptimizer
 
-class FinancialTransaction(BaseModel):
-    broker: str = Field(description="Financial institution")
-    amount: str = Field(description="Transaction amount")
-    security: str = Field(description="Financial instrument")
-    transaction_type: Literal["equity", "bond", "option", "future", "forex"] = Field(
-        description="Type of transaction"
-    )
-
-examples = [
-    Example(
-        text=(
-            "Transaction Report: Goldman Sachs processed a $2.5M equity trade for Tesla Inc. "
-            "on March 15, 2024. Commission: $1,250. Status: Completed."
-        ),
-        expected_output=None  # No ground truth, uses LLM judge
-    ),
-    Example(
-        text=(
-            "JPMorgan executed $500K bond purchase for Apple Corp dated 2024-03-20. "
-            "Fee: $500. Status: Pending settlement."
-        ),
-        expected_output=None
-    ),
-]
-
-optimizer = PydanticOptimizer(
-    model=FinancialTransaction,
-    examples=examples,
-    system_prompt="You are a financial document analysis assistant.",
-    instruction_prompt="Extract transaction details from the financial report.",
-    model_id="gpt-4o",  # This LLM will be used as judge
-    api_key="your-api-key"
-)
-
-result = optimizer.optimize()
-```
-
-### Using a Separate Judge LLM
-
-You can pass a different `dspy.LM` as `evaluate_fn` to use as a judge. Useful when you want a more powerful model for evaluation:
-
-```python
-import dspy
-from pydantic import BaseModel, Field
-
-class ContractTerms(BaseModel):
-    parties: list[str] = Field(description="Contracting parties")
-    effective_date: str = Field(description="Contract effective date")
-    monthly_fee: str = Field(description="Monthly payment amount")
-
-# Create a separate judge LM (e.g., GPT-4 for judging, GPT-4o-mini for optimization)
-judge_lm = dspy.LM(
-    "gpt-4",
-    api_key="your-api-key"
-)
-
-examples = [
-    Example(
-        text=(
-            "Service Agreement between TechCorp LLC and DataSystems Inc., effective January 1, 2024. "
-            "Monthly fee: $15,000. Contract term: 24 months."
-        ),
-        expected_output=None
-    ),
-]
-
-optimizer = PydanticOptimizer(
-    model=ContractTerms,
-    examples=examples,
-    evaluate_fn=judge_lm,  # Pass dspy.LM as evaluate_fn
-    model_id="gpt-4o-mini",  # This LLM is used for optimization (cheaper)
-    api_key="your-api-key"
-)
-
-result = optimizer.optimize()
-```
-
-**Note**: When `expected_output` is `None`:
-
-- If `evaluate_fn` is a `dspy.LM`, it will be used as the judge
-- If `evaluate_fn` is a callable, it will be treated as a judge function (with `extracted_data` parameter)
-- If `evaluate_fn` is `None` or a string ("exact", "levenshtein", "exact-hitl", "levenshtein-hitl"), the default LLM judge will be used
-
-## Optimizing Prompts
-
-Provide optional prompts or template prompts with placeholders—they'll be optimized too. This is especially powerful for domain-specific extraction:
-
-```python
-from pydantic import BaseModel, Field
-from typing import Literal
-
-class ProductInfo(BaseModel):
-    name: str = Field(description="Product name")
-    price: str = Field(description="Product price")
-    features: list[str] = Field(description="Product features")
-    availability: Literal["in_stock", "pre_order", "sold_out"] = Field(
-        description="Availability status"
-    )
-
-examples = [
-    Example(
-        text="iPhone 15 Pro Max with 256GB storage, A17 Pro chip, priced at $1199. Available in titanium and black colors.",
-        expected_output=ProductInfo(
-            name="iPhone 15 Pro Max",
-            price="$1199",
-            features=["256GB storage", "A17 Pro chip", "titanium design"],
-            availability="in_stock"
-        )
-    ),
-]
-
-optimizer = PydanticOptimizer(
-    model=ProductInfo,
-    examples=examples,
-    system_prompt="You are a product information extraction assistant.",  # Optional
-    instruction_prompt="Extract product details from: {product_description}",  # Optional template
-    model_id="gpt-4o"
-)
-
-result = optimizer.optimize()
-# Typical results: baseline 68% → optimized 91% accuracy
-
-# Create optimized model with updated descriptions
-from dspydantic import create_optimized_model
-
-OptimizedProductInfo = create_optimized_model(
-    ProductInfo,
-    result.optimized_descriptions
-)
-
-# Access optimized prompts
-print(result.optimized_system_prompt)      # Optimized system prompt
-print(result.optimized_instruction_prompt)  # Optimized instruction prompt
-print(result.optimized_descriptions)        # Optimized field descriptions
-```
-
-## Built-in Evaluation Options
-
-Instead of writing a custom evaluation function, you can use built-in options:
-
-- `"exact"`: Exact matching between extracted and expected values
-- `"levenshtein"`: Fuzzy matching using Levenshtein distance
-- `"exact-hitl"`: Human-in-the-loop exact evaluation (shows GUI popup)
-- `"levenshtein-hitl"`: Human-in-the-loop Levenshtein evaluation (shows GUI popup)
-
-```python
 optimizer = PydanticOptimizer(
     model=PatientRecord,
     examples=examples,
@@ -884,85 +503,68 @@ optimizer = PydanticOptimizer(
 )
 ```
 
-## Optimizer Selection
-
-DSPydantic supports multiple DSPy optimizers and automatically selects the best one based on your dataset size, or you can specify one manually.
-
-### Auto-Selection (Default)
-
-If you don't specify an optimizer, DSPydantic will automatically select one based on your dataset size:
-
-- **< 20 examples**: Uses `BootstrapFewShot` (good for small datasets)
-- **>= 20 examples**: Uses `BootstrapFewShotWithRandomSearch` (better for larger datasets)
+#### Custom Evaluation Function
 
 ```python
-# Automatically selects best optimizer based on dataset size
-optimizer = PydanticOptimizer(
-    model=PatientRecord,
-    examples=examples,  # Will auto-select based on len(examples)
-    model_id="gpt-4o"
-)
+from dspydantic import PydanticOptimizer
+
+def evaluate(example, optimized_descriptions, system_prompt, instruction_prompt) -> float:
+    # Returns score 0.0 to 1.0
+    return 0.85
+
+optimizer = PydanticOptimizer(model=Customer, examples=examples, evaluate_fn=evaluate, model_id="gpt-4o")
 ```
 
-### Manual Optimizer Selection
+#### LLM Judge (No Expected Output)
 
-You can specify an optimizer by passing it as a string (optimizer type name) or as a Teleprompter instance:
+When `expected_output` is `None`, use an LLM as a judge for unlabeled data:
 
 ```python
-# Use a specific optimizer type (as string)
-optimizer = PydanticOptimizer(
-    model=PatientRecord,
-    examples=examples,
-    optimizer="miprov2",  # or "gepa", "copro", "simba", etc.
-    model_id="gpt-4o"
-)
+from pydantic import BaseModel, Field
+from typing import Literal
+from dspydantic import Example, PydanticOptimizer
+import dspy
+
+class Transaction(BaseModel):
+    broker: str = Field(description="Financial institution")
+    amount: str = Field(description="Transaction amount")
+    security: str = Field(description="Financial instrument")
+    transaction_type: Literal["equity", "bond", "option"] = Field(description="Transaction type")
+
+examples = [
+    Example(text="Goldman Sachs processed a $2.5M equity trade for Tesla Inc.", expected_output=None),
+    Example(text="JPMorgan executed $500K bond purchase for Apple Corp.", expected_output=None),
+]
+
+# Uses model_id LLM as judge by default
+optimizer = PydanticOptimizer(model=Transaction, examples=examples, model_id="gpt-4o")
+
+# Or use a separate judge LLM
+judge_lm = dspy.LM("gpt-4", api_key="your-api-key")
+optimizer = PydanticOptimizer(model=Transaction, examples=examples, evaluate_fn=judge_lm, model_id="gpt-4o-mini")
 ```
 
-Available optimizer types include:
+### Optimizer Selection
 
-- `"bootstrapfewshot"`: BootstrapFewShot optimizer
-- `"bootstrapfewshotwithrandomsearch"`: BootstrapFewShotWithRandomSearch
-- `"miprov2"`: MIPROv2 optimizer (best for instruction optimization)
-- `"miprov2zeroshot"`: MIPROv2 with zero-shot settings
-- `"gepa"`: GEPA optimizer (reflective prompt evolution)
-- `"copro"`: COPRO optimizer
-- `"simba"`: SIMBA optimizer
-- `"knnfewshot"`: KNNFewShot optimizer
-- `"labeledfewshot"`: LabeledFewShot optimizer
-- And more (all Teleprompter subclasses are automatically supported)
+Auto-selects optimizer based on dataset size, or specify manually:
 
-### Custom Optimizer Instance
-
-You can also pass a custom optimizer instance directly:
+- **Auto (default)**: `< 20 examples` → `BootstrapFewShot`, `>= 20 examples` → `BootstrapFewShotWithRandomSearch`
+- **Manual**: Pass string (`"miprov2"`, `"gepa"`, `"copro"`, etc.) or Teleprompter instance
 
 ```python
+from dspydantic import PydanticOptimizer
 from dspy.teleprompt import MIPROv2
 
-# Create a custom optimizer with specific settings
-custom_optimizer = MIPROv2(
-    metric=my_metric_function,
-    num_threads=8,
-    auto="full",
-    max_bootstrapped_demos=8
-)
+# Auto-select (default)
+optimizer = PydanticOptimizer(model=PatientRecord, examples=examples, model_id="gpt-4o")
 
-# Use the custom optimizer
-optimizer = PydanticOptimizer(
-    model=PatientRecord,
-    examples=examples,
-    optimizer=custom_optimizer  # Pass custom optimizer instance
-)
+# Manual selection
+optimizer = PydanticOptimizer(model=PatientRecord, examples=examples, optimizer="miprov2", model_id="gpt-4o")
+
+# Custom optimizer instance
+custom_optimizer = MIPROv2(metric=my_metric, num_threads=8)
+optimizer = PydanticOptimizer(model=PatientRecord, examples=examples, optimizer=custom_optimizer)
 ```
-
-**Note**: The `optimizer` parameter accepts either a string (optimizer type name) or a Teleprompter instance. If None, it will auto-select based on dataset size.
-
-## Examples
-
-See the [examples directory](examples/) for complete working examples:
-
-- **[Veterinary EHR extraction](examples/text_example.py)**: Extract diseases, ICD-11 labels, and anonymized entities from clinical narratives—real-world medical data extraction
-- **[Handwritten digit classification](examples/image_example.py)**: Classify MNIST handwritten digits from images—demonstrates vision capabilities
-- **[Movie review sentiment](examples/imdb_example.py)**: Classify IMDB movie review sentiment with template prompts—shows dynamic prompt formatting
 
 ## API Reference
 
@@ -972,36 +574,25 @@ Main optimizer class.
 
 **Parameters:**
 
-- `model` (type[BaseModel]): The Pydantic model class to optimize—your structured data schema
-- `examples` (list[Example]): List of examples for optimization—typically 5-20 examples yield good results
-- `evaluate_fn` (Callable | dspy.LM | str | None): Evaluation function, built-in option ("exact", "levenshtein", "exact-hitl", "levenshtein-hitl"), or dspy.LM instance.
-  - When `expected_output` is provided: Can be a callable `(Example, dict[str, str], str | None, str | None) -> float`,
-    a string ("exact" or "levenshtein"), or None (uses default evaluation).
-  - When `expected_output` is None: Can be a `dspy.LM` instance (used as judge), a callable judge function
-    `(Example, dict[str, Any], dict[str, str], str | None, str | None) -> float`, or None (uses default LLM judge).
-- `system_prompt` (str | None): Optional initial system prompt to optimize—helps set context for your domain
-- `instruction_prompt` (str | None): Optional initial instruction prompt to optimize—can include template placeholders like `{key}`
-- `lm` (dspy.LM | None): Optional DSPy language model instance. If provided, used instead of creating one from model_id/api_key.
-- `model_id` (str): LLM model ID (default: "gpt-4o")—use "gpt-4o-mini" for faster/cheaper optimization
+- `model` (type[BaseModel]): Pydantic model class to optimize
+- `examples` (list[Example]): Examples for optimization (typically 5-20)
+- `evaluate_fn` (Callable | dspy.LM | str | None): Evaluation function, built-in ("exact", "levenshtein", "exact-hitl", "levenshtein-hitl"), or dspy.LM instance
+- `system_prompt` (str | None): Optional system prompt to optimize
+- `instruction_prompt` (str | None): Optional instruction prompt to optimize (supports `{placeholders}`)
+- `lm` (dspy.LM | None): Optional DSPy LM instance (overrides model_id/api_key)
+- `model_id` (str): LLM model ID (default: "gpt-4o")
 - `api_key` (str | None): API key (default: from OPENAI_API_KEY env var)
-- `api_base` (str | None): API base URL (for Azure OpenAI or custom endpoints)
+- `api_base` (str | None): API base URL (for Azure OpenAI)
 - `api_version` (str | None): API version (for Azure OpenAI)
-- `num_threads` (int): Number of optimization threads (default: 4)—increase for faster optimization
-- `init_temperature` (float): Initial temperature for optimization (default: 1.0)
-- `verbose` (bool): Print progress (default: False)—set True to see optimization progress and scores
-- `optimizer` (str | Teleprompter | None): Optimizer specification. Can be:
-  - A string (optimizer type name): e.g., "miprov2", "gepa", "bootstrapfewshot", etc.
-    If None, optimizer will be auto-selected based on dataset size.
-  - A Teleprompter instance: Custom optimizer instance to use directly.
-  Valid optimizer type strings include: "bootstrapfewshot", "bootstrapfewshotwithrandomsearch",
-  "miprov2", "gepa", "copro", "simba", etc. (all Teleprompter subclasses are supported)
-- `train_split` (float): Fraction of examples to use for training (rest for validation) (default: 0.8)
-- `optimizer_kwargs` (dict[str, Any] | None): Optional dictionary of additional keyword arguments
-  to pass to the optimizer constructor. Only used if `optimizer` is a string or None.
+- `num_threads` (int): Optimization threads (default: 4)
+- `init_temperature` (float): Initial temperature (default: 1.0)
+- `verbose` (bool): Print progress (default: False)
+- `optimizer` (str | Teleprompter | None): Optimizer name or instance (auto-selects if None)
+- `train_split` (float): Training split fraction (default: 0.8)
+- `optimizer_kwargs` (dict[str, Any] | None): Additional kwargs for optimizer
+- `exclude_fields` (list[str] | None): Field names to exclude from evaluation
 
-**Returns:**
-
-- `OptimizationResult`: Contains optimized descriptions, prompts, and metrics
+**Returns:** `OptimizationResult` with optimized descriptions, prompts, and metrics
 
 ### `Example`
 
@@ -1009,182 +600,69 @@ Example data for optimization.
 
 **Parameters:**
 
-- `expected_output` (dict | BaseModel | None): Expected output as a Pydantic model instance or dict.
-  If `None`, evaluation will use an LLM judge or custom evaluation function instead of comparing
-  against expected output.
-- `text` (str | None): Plain text input
-- `image_path` (str | Path | None): Path to an image file
-- `image_base64` (str | None): Base64-encoded image string
-- `pdf_path` (str | Path | None): Path to a PDF file
+- `expected_output` (dict | BaseModel | None): Expected output (Pydantic model or dict). If `None`, uses LLM judge
+- `text` (str | dict | None): Plain text input or dict for template prompts
+- `image_path` (str | Path | None): Path to image file
+- `image_base64` (str | None): Base64-encoded image
+- `pdf_path` (str | Path | None): Path to PDF file
 - `pdf_dpi` (int): DPI for PDF conversion (default: 300)
 
-**Example:**
+**Examples:**
 
 ```python
-from pydantic import BaseModel, Field
-from typing import Literal
-
-class Transaction(BaseModel):
-    broker: str = Field(description="Financial institution")
-    amount: str = Field(description="Transaction amount")
-    security: str = Field(description="Financial instrument")
-    transaction_type: Literal["equity", "bond", "option"] = Field(
-        description="Transaction type"
-    )
-
 # Text input
-Example(
-    text="Goldman Sachs processed a $2.5M equity trade for Tesla Inc. on March 15, 2024.",
-    expected_output=Transaction(
-        broker="Goldman Sachs",
-        amount="$2.5M",
-        security="Tesla Inc.",
-        transaction_type="equity"
-    )
-)
+Example(text="Goldman Sachs processed $2.5M equity trade", expected_output=Transaction(...))
 
-# Image input (e.g., scanned financial document)
-Example(
-    image_path="transaction_report.png",
-    expected_output=Transaction(
-        broker="JPMorgan",
-        amount="$500K",
-        security="Apple Corp",
-        transaction_type="bond"
-    )
-)
+# Image input
+Example(image_path="report.png", expected_output=Transaction(...))
 
-# PDF input (e.g., financial statement PDF)
-Example(
-    pdf_path="financial_statement.pdf",
-    expected_output=Transaction(
-        broker="Morgan Stanley",
-        amount="$1M",
-        security="Microsoft Corp",
-        transaction_type="equity"
-    )
-)
+# PDF input
+Example(pdf_path="statement.pdf", expected_output=Transaction(...))
 
-# Combined text and image
-Example(
-    text="Extract transaction details from this financial report",
-    image_path="trade_confirmation.png",
-    expected_output=Transaction(
-        broker="Goldman Sachs",
-        amount="$2.5M",
-        security="Tesla Inc.",
-        transaction_type="equity"
-    )
-)
+# Template prompt (dict)
+Example(text={"report": "...", "date": "..."}, expected_output=Transaction(...))
 
-# Template prompt with dictionary input
-Example(
-    text={
-        "report": "Goldman Sachs processed a $2.5M equity trade for Tesla Inc.",
-        "date": "March 15, 2024",
-        "document_type": "transaction report"
-    },
-    expected_output=Transaction(
-        broker="Goldman Sachs",
-        amount="$2.5M",
-        security="Tesla Inc.",
-        transaction_type="equity"
-    )
-)
-
-# Without expected_output (uses LLM judge for evaluation)
-Example(
-    text="JPMorgan executed $500K bond purchase for Apple Corp dated 2024-03-20.",
-    expected_output=None
-)
+# LLM judge (no expected_output)
+Example(text="...", expected_output=None)
 ```
 
 ### `create_optimized_model(model, optimized_descriptions)`
 
-**Recommended:** Create a new Pydantic model class with optimized descriptions.
+Create a new Pydantic model class with optimized descriptions.
 
 **Parameters:**
 
-- `model` (type[BaseModel]): Your original Pydantic model
+- `model` (type[BaseModel]): Original Pydantic model
 - `optimized_descriptions` (dict[str, str]): From `result.optimized_descriptions`
 
-**Returns:**
-
-- `type[BaseModel]`: New model class with optimized descriptions in Field definitions
+**Returns:** `type[BaseModel]` - New model class with optimized descriptions
 
 **Example:**
 
 ```python
-from dspydantic import create_optimized_model
-from pydantic import BaseModel, Field
-from typing import Literal
-
-class Transaction(BaseModel):
-    broker: str = Field(description="Financial institution")
-    amount: str = Field(description="Transaction amount")
-    security: str = Field(description="Financial instrument")
-    transaction_type: Literal["equity", "bond", "option"] = Field(
-        description="Transaction type"
-    )
-
-# Create optimized model with improved field descriptions
-OptimizedTransaction = create_optimized_model(
-    Transaction,
-    result.optimized_descriptions
-)
-
-# Use with OpenAI structured outputs
-# The optimized descriptions improve extraction accuracy
-response = client.chat.completions.create(
-    model="gpt-4o",
-    messages=messages,
-    response_format=OptimizedTransaction
-)
+OptimizedTransaction = create_optimized_model(Transaction, result.optimized_descriptions)
+response = client.chat.completions.create(model="gpt-4o", messages=messages, response_format=OptimizedTransaction)
 ```
 
 ### `apply_optimized_descriptions(model, optimized_descriptions)`
 
-Get optimized JSON schema without creating a new model class. Useful for one-off schema generation.
+Get optimized JSON schema without creating a new model class.
 
 **Parameters:**
 
-- `model` (type[BaseModel]): Your original Pydantic model
+- `model` (type[BaseModel]): Original Pydantic model
 - `optimized_descriptions` (dict[str, str]): From `result.optimized_descriptions`
 
-**Returns:**
-
-- `dict`: JSON schema dictionary with optimized descriptions
+**Returns:** `dict` - JSON schema with optimized descriptions
 
 **Example:**
 
 ```python
-from dspydantic import apply_optimized_descriptions
-from pydantic import BaseModel, Field
-from typing import Literal
-
-class ProductInfo(BaseModel):
-    name: str = Field(description="Product name")
-    price: str = Field(description="Product price")
-    availability: Literal["in_stock", "pre_order", "sold_out"] = Field(
-        description="Availability status"
-    )
-
-# Get optimized schema directly without creating a new model class
-optimized_schema = apply_optimized_descriptions(
-    ProductInfo,
-    result.optimized_descriptions
-)
-
-# Use with OpenAI structured outputs
+optimized_schema = apply_optimized_descriptions(ProductInfo, result.optimized_descriptions)
 response = client.chat.completions.create(
     model="gpt-4o",
     messages=messages,
-    response_format={
-        "type": "json_schema",
-        "json_schema": {
-            "schema": optimized_schema
-        }
-    }
+    response_format={"type": "json_schema", "json_schema": {"schema": optimized_schema}}
 )
 ```
 
