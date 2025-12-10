@@ -16,7 +16,11 @@ from pydantic import BaseModel
 
 from dspydantic.extractor import apply_optimized_descriptions
 from dspydantic.types import Example
-from dspydantic.utils import convert_images_to_dspy_images, format_instruction_prompt_template
+from dspydantic.utils import (
+    build_image_signature_and_kwargs,
+    convert_images_to_dspy_images,
+    format_instruction_prompt_template,
+)
 
 
 class HitlManager:
@@ -829,19 +833,12 @@ class HitlManager:
             )
 
             # Use DSPy's ChainOfThought for extraction
-            if dspy_images and len(dspy_images) > 0:
-                if len(dspy_images) == 1:
-                    signature = "prompt, image -> json_output"
-                    extractor = dspy.ChainOfThought(signature)
-                    result = extractor(prompt=json_prompt, image=dspy_images[0])
-                else:
-                    signature = "prompt, images -> json_output"
-                    extractor = dspy.ChainOfThought(signature)
-                    result = extractor(prompt=json_prompt, images=dspy_images)
-            else:
-                signature = "prompt -> json_output"
-                extractor = dspy.ChainOfThought(signature)
-                result = extractor(prompt=json_prompt)
+            # Build signature with proper multi-image support
+            signature, extractor_kwargs = build_image_signature_and_kwargs(dspy_images)
+            extractor = dspy.ChainOfThought(signature)
+            # Set the prompt and call extractor with image kwargs
+            extractor_kwargs["prompt"] = json_prompt
+            result = extractor(**extractor_kwargs)
 
             # Extract output text
             if hasattr(result, "json_output"):

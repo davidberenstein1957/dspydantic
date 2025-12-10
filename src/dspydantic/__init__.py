@@ -13,7 +13,7 @@ from dspydantic.utils import (
     prepare_input_data,
 )
 
-__version__ = "0.0.6"
+__version__ = "0.0.7"
 __all__ = [
     "PydanticOptimizer",
     "Example",

@@ -234,6 +234,52 @@ def convert_images_to_dspy_images(images: list[str] | None) -> list[Any] | None:
     return [base64_to_dspy_image(img) for img in images]
 
 
+def build_image_signature_and_kwargs(
+    dspy_images: list[Any] | None,
+) -> tuple[str, dict[str, Any]]:
+    """Build a DSPy signature and keyword arguments for image extraction.
+
+    Creates proper multi-image signatures using list[dspy.Image] when multiple
+    images are present, following DSPy's inline signature pattern as documented at:
+    https://dspy.ai/learn/programming/signatures/#inline-dspy-signatures
+
+    Args:
+        dspy_images: List of dspy.Image objects, or None.
+
+    Returns:
+        Tuple of (signature_string, kwargs_dict) where:
+        - signature_string: The DSPy signature string
+          (e.g., "prompt, images: list[dspy.Image] -> json_output")
+        - kwargs_dict: Dictionary of keyword arguments to pass to the extractor
+
+    Examples:
+        Single image:
+        >>> signature, kwargs = build_image_signature_and_kwargs([img1])
+        >>> # signature: "prompt, image -> json_output"
+        >>> # kwargs: {"prompt": None, "image": img1}
+
+        Multiple images:
+        >>> signature, kwargs = build_image_signature_and_kwargs([img1, img2, img3])
+        >>> # signature: "prompt, images: list[dspy.Image] -> json_output"
+        >>> # kwargs: {"prompt": None, "images": [img1, img2, img3]}
+    """
+    if not dspy_images or len(dspy_images) == 0:
+        return "prompt -> json_output", {}
+
+    if len(dspy_images) == 1:
+        # Single image: use simple signature
+        signature = "prompt, image -> json_output"
+        kwargs = {"prompt": None, "image": dspy_images[0]}  # prompt will be set later
+        return signature, kwargs
+
+    # Multiple images: use list[dspy.Image] type annotation
+    # This follows DSPy's pattern for list types in inline signatures
+    signature = "prompt, images: list[dspy.Image] -> json_output"
+    kwargs = {"prompt": None, "images": dspy_images}  # prompt will be set later
+
+    return signature, kwargs
+
+
 def has_template_placeholders(text: str) -> bool:
     """Check if a string contains template placeholders.
 
