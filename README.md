@@ -2,8 +2,6 @@
 
 Automatically optimize Pydantic model field descriptions and prompts using DSPy. Get better structured data extraction from LLMs with less manual tuning.
 
-DSPydantic automatically optimizes your Pydantic model field descriptions and prompts using DSPy, so you can extract better structured data from LLMs with zero manual tuning.
-
 ## ✨ What It Does
 
 Instead of spending hours crafting the perfect field descriptions for your Pydantic models, DSPydantic uses DSPy's optimization algorithms to automatically find the best descriptions based on your examples. Just provide a few examples, and watch your extraction accuracy improve.
