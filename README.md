@@ -6,6 +6,8 @@ Automatically optimize Pydantic model field descriptions and prompts using DSPy.
 
 Instead of spending hours crafting the perfect field descriptions for your Pydantic models, DSPydantic uses DSPy's optimization algorithms to automatically find the best descriptions based on your examples. Just provide a few examples, and watch your extraction accuracy improve.
 
+<img width="1541" height="781" alt="Screenshot 2025-12-10 at 17 54 17" src="https://github.com/user-attachments/assets/c43a2cd0-1c49-417f-9775-5a51c3a6fb12" />
+
 ## 🎯 Quick Start
 
 ```python
