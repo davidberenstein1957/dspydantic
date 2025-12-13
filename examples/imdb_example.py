@@ -116,7 +116,7 @@ def main():
     optimizer = PydanticOptimizer(
         model=SentimentClassification,
         examples=examples,
-        model_id="gpt-4o-mini",  # Will use OPENAI_API_KEY from environment
+        model_id="gemini/gemini-2.5-flash-lite",  # Will use GOOGLE_API_KEY from environment
         verbose=True,
         optimizer="bootstrapfewshot",
         system_prompt=(

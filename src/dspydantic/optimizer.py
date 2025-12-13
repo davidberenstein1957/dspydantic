@@ -107,6 +107,26 @@ class PydanticOptimizer:
                 lm=custom_lm
             )
 
+        Using Gemini::
+
+            optimizer = PydanticOptimizer(
+                model=User,
+                examples=examples,
+                model_id="gemini/gemini-1.5-pro",
+                api_key="your-google-key"
+            )
+
+        Using Azure OpenAI::
+
+            optimizer = PydanticOptimizer(
+                model=User,
+                examples=examples,
+                model_id="azure/gpt-4o",
+                api_key="your-azure-key",
+                api_base="https://your-resource.openai.azure.com",
+                api_version="2024-02-15-preview"
+            )
+
         Passing optimizer as a string::
 
             optimizer = PydanticOptimizer(
@@ -230,9 +250,15 @@ class PydanticOptimizer:
             lm: Optional DSPy language model instance. If provided, this will be used
                 instead of creating a new one from model_id/api_key/etc. If None,
                 a new dspy.LM will be created.
-            model_id: The model ID to use for optimization (e.g., "gpt-4o", "azure/gpt-4o").
+            model_id: The model ID to use for optimization. Supports multiple providers:
+                - OpenAI: "gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo"
+                - Azure OpenAI: "azure/gpt-4o", "azure/gpt-4-turbo"
+                - Gemini: "gemini/gemini-2.5-flash-lite"
                 Only used if `lm` is None.
-            api_key: Optional API key. If None, reads from OPENAI_API_KEY environment variable.
+            api_key: Optional API key. If None, reads from provider-specific environment variable:
+                - OPENAI_API_KEY for OpenAI
+                - AZURE_OPENAI_API_KEY for Azure OpenAI
+                - GOOGLE_API_KEY for Gemini
                 Only used if `lm` is None.
             api_base: Optional API base URL (for Azure OpenAI or custom endpoints).
                 Only used if `lm` is None.
@@ -278,7 +304,15 @@ class PydanticOptimizer:
         self.instruction_prompt = instruction_prompt
         self.lm = lm
         self.model_id = model_id
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        # Auto-detect API key from environment based on provider
+        if api_key is None:
+            if model_id.startswith("azure/"):
+                api_key = os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
+            elif model_id.startswith("gemini/") or model_id.startswith("google/"):
+                api_key = os.getenv("GOOGLE_API_KEY")
+            else:
+                api_key = os.getenv("OPENAI_API_KEY")
+        self.api_key = api_key
         self.api_base = api_base
         self.api_version = api_version
         self.num_threads = num_threads

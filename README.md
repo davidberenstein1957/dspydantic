@@ -101,6 +101,8 @@ Check out the [examples directory](examples/) for complete working examples:
 - **[Image classification](examples/image_example.py)**: Classify MNIST handwritten digits using `Literal[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]`—demonstrates vision capabilities and Literal type optimization
 - **[Text classification](examples/imdb_example.py)**: Classify IMDB movie review sentiment with `Literal["positive", "negative"]` and template prompts—shows dynamic prompt formatting with `{review}` placeholders
 - **[Human-in-the-loop](examples/hitl_example.py)**: Interactive evaluation with GUI—get human feedback during optimization
+- **[Azure OpenAI](examples/azure_example.py)**: Use Azure OpenAI for enterprise-grade deployment with enhanced security
+- **[Google Gemini](examples/gemini_example.py)**: Use Google's Gemini models for multimodal and long-context tasks
 
 ## Basic Usage
 
@@ -314,6 +316,67 @@ examples = [
 ```
 
 ## Advanced Usage
+
+### Using Different LLM Providers
+
+DSPydantic supports multiple LLM providers through DSPy's unified interface. Simply specify the provider prefix in the `model_id` and set the appropriate API key.
+
+#### OpenAI (Default)
+
+```python
+from dspydantic import PydanticOptimizer
+
+optimizer = PydanticOptimizer(
+    model=YourModel,
+    examples=examples,
+    model_id="gpt-4o",  # or "gpt-4-turbo", "gpt-3.5-turbo"
+    api_key="your-openai-key"  # or set OPENAI_API_KEY env var
+)
+```
+
+#### Azure OpenAI
+
+```python
+optimizer = PydanticOptimizer(
+    model=YourModel,
+    examples=examples,
+    model_id="azure/gpt-4o",
+    api_key="your-azure-key",  # or set AZURE_OPENAI_API_KEY env var
+    api_base="https://your-resource.openai.azure.com",
+    api_version="2024-02-15-preview"
+)
+```
+
+#### Google Gemini
+
+```python
+optimizer = PydanticOptimizer(
+    model=YourModel,
+    examples=examples,
+    model_id="gemini/gemini-1.5-pro",
+    # Other options: "gemini/gemini-1.5-flash", "gemini/gemini-1.5-pro-latest"
+    api_key="your-google-key"  # or set GOOGLE_API_KEY env var
+)
+```
+
+#### Using Custom DSPy LM
+
+For more control, pass a custom DSPy LM instance:
+
+```python
+import dspy
+
+custom_lm = dspy.LM(
+    model="anthropic/claude-3-5-sonnet-20241022",
+    api_key="your-anthropic-key"
+)
+
+optimizer = PydanticOptimizer(
+    model=YourModel,
+    examples=examples,
+    lm=custom_lm
+)
+```
 
 ### Other modalities
 
@@ -582,9 +645,16 @@ Main optimizer class.
 - `system_prompt` (str | None): Optional system prompt to optimize
 - `instruction_prompt` (str | None): Optional instruction prompt to optimize (supports `{placeholders}`)
 - `lm` (dspy.LM | None): Optional DSPy LM instance (overrides model_id/api_key)
-- `model_id` (str): LLM model ID (default: "gpt-4o")
-- `api_key` (str | None): API key (default: from OPENAI_API_KEY env var)
-- `api_base` (str | None): API base URL (for Azure OpenAI)
+- `model_id` (str): LLM model ID. Supports multiple providers:
+  - OpenAI: `"gpt-4o"`, `"gpt-4-turbo"`, `"gpt-3.5-turbo"`
+  - Azure: `"azure/gpt-4o"`
+  - Gemini: `"gemini/gemini-1.5-pro"`, `"gemini/gemini-1.5-flash"`
+  - Default: `"gpt-4o"`
+- `api_key` (str | None): API key. If None, reads from provider-specific environment variable:
+  - `OPENAI_API_KEY` for OpenAI
+  - `AZURE_OPENAI_API_KEY` for Azure OpenAI
+  - `GOOGLE_API_KEY` for Gemini
+- `api_base` (str | None): API base URL (for Azure OpenAI or custom endpoints)
 - `api_version` (str | None): API version (for Azure OpenAI)
 - `num_threads` (int): Optimization threads (default: 4)
 - `init_temperature` (float): Initial temperature (default: 1.0)
