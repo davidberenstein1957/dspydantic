@@ -1,2 +1,1 @@
 """Integration tests for dspydantic."""
-

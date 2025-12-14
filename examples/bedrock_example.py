@@ -1,7 +1,7 @@
 """Example demonstrating DSPydantic with AWS Bedrock (Claude models).
 
 This example shows how to use AWS Bedrock with Claude models (Haiku 4.5 and Sonnet 4.5)
-for optimizing Pydantic model field descriptions. AWS Bedrock provides access to 
+for optimizing Pydantic model field descriptions. AWS Bedrock provides access to
 foundation models through a managed service with AWS-native security and compliance.
 
 Supported Models:
@@ -13,12 +13,12 @@ To run this example:
    a) AWS Profile (recommended):
       Configure in ~/.aws/credentials or ~/.aws/config
       Set profile: export AWS_PROFILE="your-profile-name"
-   
+
    b) Environment variables:
       export AWS_ACCESS_KEY_ID="your-access-key"
       export AWS_SECRET_ACCESS_KEY="your-secret-key"
       export AWS_REGION="us-east-1"  # or your preferred region
-   
+
    c) IAM role (when running on EC2/ECS/Lambda)
 
 2. Ensure your AWS credentials have bedrock:InvokeModel permissions
@@ -42,24 +42,16 @@ class CustomerSupport(BaseModel):
     """Customer support ticket analysis model."""
 
     ticket_id: str = Field(description="Unique ticket identifier")
-    category: Literal[
-        "billing", "technical", "account", "product", "shipping", "other"
-    ] = Field(description="Support ticket category")
-    priority: Literal["low", "medium", "high", "urgent"] = Field(
-        description="Priority level"
+    category: Literal["billing", "technical", "account", "product", "shipping", "other"] = Field(
+        description="Support ticket category"
     )
+    priority: Literal["low", "medium", "high", "urgent"] = Field(description="Priority level")
     sentiment: Literal["positive", "neutral", "negative", "frustrated"] = Field(
         description="Customer sentiment"
     )
-    issues: list[str] = Field(
-        default_factory=list, description="List of reported issues"
-    )
-    resolution_needed: bool = Field(
-        description="Whether immediate resolution is required"
-    )
-    estimated_resolution_time: str = Field(
-        description="Expected time to resolve in hours or days"
-    )
+    issues: list[str] = Field(default_factory=list, description="List of reported issues")
+    resolution_needed: bool = Field(description="Whether immediate resolution is required")
+    estimated_resolution_time: str = Field(description="Expected time to resolve in hours or days")
 
 
 def main():
@@ -159,12 +151,15 @@ def main():
     # Choose model - you can switch between Haiku and Sonnet
     # Haiku: Fast and cost-effective
     # Sonnet: More intelligent and capable
-    model_choice = input(
-        "Choose model:\n"
-        "  1. Claude 3.5 Haiku (fast, cost-effective)\n"
-        "  2. Claude 3.5 Sonnet v2 (most intelligent)\n"
-        "Enter choice (1 or 2, default=1): "
-    ).strip() or "1"
+    model_choice = (
+        input(
+            "Choose model:\n"
+            "  1. Claude 3.5 Haiku (fast, cost-effective)\n"
+            "  2. Claude 3.5 Sonnet v2 (most intelligent)\n"
+            "Enter choice (1 or 2, default=1): "
+        ).strip()
+        or "1"
+    )
 
     if model_choice == "2":
         model_id = "bedrock/us.anthropic.claude-3-5-sonnet-20241022-v2:0"

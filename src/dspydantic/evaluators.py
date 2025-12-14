@@ -266,17 +266,12 @@ def default_evaluate_fn(
         # DSPy's LM can handle images if we format them as data URLs
         if images:
             # Format images as data URLs for vision models
-            image_data_urls = [
-                f"data:image/png;base64,{img}" for img in images
-            ]
+            image_data_urls = [f"data:image/png;base64,{img}" for img in images]
             # Add images to the prompt context
             # Note: DSPy's ChainOfThought may need special handling for images
             # For now, we'll include them in the prompt text
             image_context = "\n".join(
-                [
-                    f"Image {i+1} (base64): {url[:100]}..."
-                    for i, url in enumerate(image_data_urls)
-                ]
+                [f"Image {i+1} (base64): {url[:100]}..." for i, url in enumerate(image_data_urls)]
             )
             json_prompt = f"{json_prompt}\n\n{image_context}"
 
@@ -517,4 +512,3 @@ def default_evaluate_fn(
         return max(0.0, min(1.0, score))  # Ensure score is between 0.0 and 1.0
 
     return evaluate
-

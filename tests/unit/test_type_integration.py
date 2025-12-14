@@ -1,4 +1,5 @@
 """Test that field types are passed to optimization."""
+
 from pydantic import BaseModel
 
 from dspydantic import Example, PydanticOptimizer
@@ -6,16 +7,12 @@ from dspydantic import Example, PydanticOptimizer
 
 class TestModel(BaseModel):
     """Test model without field descriptions."""
+
     name: str  # No description
     age: int  # No description
 
 
-examples = [
-    Example(
-        text="John Doe, 30 years old",
-        expected_output={"name": "John Doe", "age": 30}
-    )
-]
+examples = [Example(text="John Doe, 30 years old", expected_output={"name": "John Doe", "age": 30})]
 
 optimizer = PydanticOptimizer(
     model=TestModel,

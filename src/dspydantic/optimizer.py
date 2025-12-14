@@ -215,11 +215,13 @@ class PydanticOptimizer:
         self,
         model: type[BaseModel],
         examples: list[Example],
-        evaluate_fn: Callable[[Example, dict[str, str], str | None, str | None], float]
-        | Callable[[Example, dict[str, Any], dict[str, str], str | None, str | None], float]
-        | dspy.LM
-        | str
-        | None = None,
+        evaluate_fn: (
+            Callable[[Example, dict[str, str], str | None, str | None], float]
+            | Callable[[Example, dict[str, Any], dict[str, str], str | None, str | None], float]
+            | dspy.LM
+            | str
+            | None
+        ) = None,
         system_prompt: str | None = None,
         instruction_prompt: str | None = None,
         lm: dspy.LM | None = None,
@@ -636,9 +638,7 @@ class PydanticOptimizer:
             text = input_data.get("text") if isinstance(input_data, dict) else None
             images = input_data.get("images") if isinstance(input_data, dict) else None
             images_base64 = (
-                input_data.get("images_base64")
-                if isinstance(input_data, dict)
-                else None
+                input_data.get("images_base64") if isinstance(input_data, dict) else None
             )
 
             # Create Example - if we have images, use image_base64 (first image)
@@ -740,11 +740,7 @@ class PydanticOptimizer:
         # Images might be dspy.Image objects or base64 strings
         text = input_data.get("text") if isinstance(input_data, dict) else None
         images = input_data.get("images") if isinstance(input_data, dict) else None
-        images_base64 = (
-            input_data.get("images_base64")
-            if isinstance(input_data, dict)
-            else None
-        )
+        images_base64 = input_data.get("images_base64") if isinstance(input_data, dict) else None
 
         # Create Example - if we have images, use image_base64 (first image)
         # Prefer images_base64 (original base64) if available,
@@ -1043,9 +1039,7 @@ class PydanticOptimizer:
             )
             baseline_scores.append(baseline_score)
 
-        baseline_avg = (
-            sum(baseline_scores) / len(baseline_scores) if baseline_scores else 0.0
-        )
+        baseline_avg = sum(baseline_scores) / len(baseline_scores) if baseline_scores else 0.0
         if self.verbose:
             print(f"Baseline average score: {baseline_avg:.2%}")
 
@@ -1111,9 +1105,7 @@ class PydanticOptimizer:
         for field_path in self.field_descriptions.keys():
             attr_name = f"optimized_{field_path}"
             if hasattr(test_result, attr_name):
-                optimized_field_descriptions[field_path] = getattr(
-                    test_result, attr_name
-                )
+                optimized_field_descriptions[field_path] = getattr(test_result, attr_name)
 
         # Extract optimized prompts
         optimized_system_prompt: str | None = None
@@ -1123,9 +1115,7 @@ class PydanticOptimizer:
                 optimized_system_prompt = getattr(test_result, "optimized_system_prompt")
         if self.instruction_prompt is not None:
             if hasattr(test_result, "optimized_instruction_prompt"):
-                optimized_instruction_prompt = getattr(
-                    test_result, "optimized_instruction_prompt"
-                )
+                optimized_instruction_prompt = getattr(test_result, "optimized_instruction_prompt")
 
         # Evaluate optimized config on validation set
         if self.verbose:
@@ -1172,9 +1162,7 @@ class PydanticOptimizer:
 
             if self.instruction_prompt is not None:
                 if hasattr(prediction, "optimized_instruction_prompt"):
-                    pred_instruction_prompt = getattr(
-                        prediction, "optimized_instruction_prompt"
-                    )
+                    pred_instruction_prompt = getattr(prediction, "optimized_instruction_prompt")
 
             # Convert DSPy example to our Example object
             example_obj = self._dspy_example_to_example(val_ex)
@@ -1186,22 +1174,16 @@ class PydanticOptimizer:
             )
             evaluation_scores.append(score)
 
-        avg_score = (
-            sum(evaluation_scores) / len(evaluation_scores) if evaluation_scores else 0.0
-        )
+        avg_score = sum(evaluation_scores) / len(evaluation_scores) if evaluation_scores else 0.0
 
         # Compare with baseline
         improvement = avg_score - baseline_avg
-        improvement_pct = (
-            (improvement / baseline_avg * 100) if baseline_avg > 0 else 0.0
-        )
+        improvement_pct = (improvement / baseline_avg * 100) if baseline_avg > 0 else 0.0
 
         # Only use optimized prompts/descriptions if they improve performance
         if improvement < 0:
             if self.verbose:
-                print(
-                    f"\n⚠️  WARNING: Optimization decreased performance by {abs(improvement):.2%}"
-                )
+                print(f"\n⚠️  WARNING: Optimization decreased performance by {abs(improvement):.2%}")
                 print("Keeping original prompts and descriptions instead of optimized ones.")
             optimized_field_descriptions = self.field_descriptions.copy()
             optimized_system_prompt = self.system_prompt
@@ -1236,9 +1218,7 @@ class PydanticOptimizer:
             if improvement > 0:
                 print(f"Improvement: {improvement:+.2%} ({improvement_pct:+.1f}%)")
             elif improvement < 0:
-                print(
-                    f"⚠️  Optimization decreased performance by {abs(improvement):.2%}"
-                )
+                print(f"⚠️  Optimization decreased performance by {abs(improvement):.2%}")
                 print("Using original field descriptions instead.")
             else:
                 print("No change in performance.")
@@ -1248,4 +1228,3 @@ class PydanticOptimizer:
         self._close_hitl_window()
 
         return result
-

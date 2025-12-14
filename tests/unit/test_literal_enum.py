@@ -1,4 +1,5 @@
 """Test Literal and Enum type extraction."""
+
 from enum import Enum
 from typing import Literal
 
@@ -9,6 +10,7 @@ from dspydantic.extractor import extract_field_types
 
 class Status(str, Enum):
     """Status enum."""
+
     ACTIVE = "active"
     INACTIVE = "inactive"
     PENDING = "pending"
@@ -16,6 +18,7 @@ class Status(str, Enum):
 
 class TestModel(BaseModel):
     """Test model with Literal and Enum."""
+
     digit: Literal[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
     status: Status
     name: str

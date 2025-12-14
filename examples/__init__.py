@@ -1,2 +1,1 @@
 """Example scripts for dspydantic."""
-

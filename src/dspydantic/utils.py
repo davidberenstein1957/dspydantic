@@ -19,9 +19,7 @@ except ImportError:
     Image = None  # type: ignore[assignment]
 
 
-def pdf_to_base64_images(
-    pdf_path: str | Path, dpi: int = 300
-) -> list[str]:
+def pdf_to_base64_images(pdf_path: str | Path, dpi: int = 300) -> list[str]:
     """Convert a PDF file to base64-encoded images at specified DPI.
 
     Args:
@@ -42,8 +40,7 @@ def pdf_to_base64_images(
         )
     if Image is None:
         raise ImportError(
-            "Pillow is required for image processing. "
-            "Install it with: uv pip install pillow"
+            "Pillow is required for image processing. " "Install it with: uv pip install pillow"
         )
 
     pdf_path = Path(pdf_path)
@@ -83,8 +80,7 @@ def image_to_base64(image_path: str | Path) -> str:
     """
     if Image is None:
         raise ImportError(
-            "Pillow is required for image processing. "
-            "Install it with: uv pip install pillow"
+            "Pillow is required for image processing. " "Install it with: uv pip install pillow"
         )
 
     image_path = Path(image_path)

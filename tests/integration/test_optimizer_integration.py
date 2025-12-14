@@ -206,7 +206,8 @@ def test_optimizer_with_gemini_model() -> None:
 
 @pytest.mark.integration
 @pytest.mark.skipif(
-    not os.getenv("AWS_PROFILE") and not (os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY")),
+    not os.getenv("AWS_PROFILE")
+    and not (os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY")),
     reason="AWS credentials not set, skipping Bedrock integration test",
 )
 def test_optimizer_with_bedrock_model() -> None:
@@ -583,7 +584,10 @@ def test_optimizer_gemini_api_key_detection() -> None:
 
 @pytest.mark.integration
 @pytest.mark.skipif(
-    not (os.getenv("AWS_PROFILE") or (os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY"))),
+    not (
+        os.getenv("AWS_PROFILE")
+        or (os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY"))
+    ),
     reason="AWS credentials not configured, skipping Bedrock integration test",
 )
 def test_optimizer_with_bedrock_model() -> None:
@@ -641,7 +645,10 @@ def test_optimizer_with_bedrock_model() -> None:
 
 @pytest.mark.integration
 @pytest.mark.skipif(
-    not (os.getenv("AWS_PROFILE") or (os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY"))),
+    not (
+        os.getenv("AWS_PROFILE")
+        or (os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY"))
+    ),
     reason="AWS credentials not configured, skipping Bedrock integration test",
 )
 def test_optimizer_bedrock_with_different_models() -> None:
@@ -734,4 +741,3 @@ def test_optimizer_api_key_auto_detection() -> None:
             verbose=False,
         )
         assert optimizer_gemini.api_key == "google-test-key"
-

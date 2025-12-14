@@ -1,6 +1,9 @@
-from pydantic import BaseModel, Field
 from typing import Literal
-from dspydantic import PydanticOptimizer, Example, create_optimized_model
+
+from pydantic import BaseModel, Field
+
+from dspydantic import Example, PydanticOptimizer, create_optimized_model
+
 
 # 1. Define your model (any Pydantic model works)
 class TransactionRecord(BaseModel):
@@ -12,6 +15,7 @@ class TransactionRecord(BaseModel):
         description="Type of financial instrument"
     )
 
+
 # 2. Provide examples (just input text + expected output)
 examples = [
     Example(
@@ -21,8 +25,8 @@ examples = [
             amount="$2.5M",
             security="Tesla Inc.",
             date="March 15, 2024",
-            transaction_type="equity"
-        )
+            transaction_type="equity",
+        ),
     ),
     Example(
         text="JPMorgan executed $500K bond purchase for Apple Corp dated 2024-03-20.",
@@ -31,8 +35,8 @@ examples = [
             amount="$500K",
             security="Apple Corp",
             date="2024-03-20",
-            transaction_type="bond"
-        )
+            transaction_type="bond",
+        ),
     ),
 ]
 
@@ -44,11 +48,10 @@ optimizer = PydanticOptimizer(
     system_prompt="You are a financial document analysis assistant.",
     instruction_prompt="Extract transaction details from the financial report.",
 )
-result = optimizer.optimize() 
+result = optimizer.optimize()
 
 OptimizedTransactionRecord = create_optimized_model(
-    TransactionRecord,
-    result.optimized_descriptions
+    TransactionRecord, result.optimized_descriptions
 )
 print(result.optimized_descriptions)
 print(result.optimized_system_prompt)

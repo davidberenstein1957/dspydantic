@@ -15,6 +15,7 @@ def test_boto3_available():
     """Test that boto3 is available."""
     try:
         import boto3
+
         print("✓ boto3 is installed")
         return True
     except ImportError:
@@ -43,10 +44,11 @@ def test_dspy_supports_bedrock():
     """Test that DSPy has Bedrock support."""
     try:
         import dspy
+
         # Check if LM class exists
-        assert hasattr(dspy, 'LM'), "dspy.LM not found"
+        assert hasattr(dspy, "LM"), "dspy.LM not found"
         print("✓ DSPy LM class is available")
-        
+
         # Note: We can't actually test Bedrock connection without credentials
         # but we can verify the module structure
         return True
@@ -64,18 +66,18 @@ def main():
     print("Bedrock Integration Verification")
     print("=" * 60)
     print()
-    
+
     results = []
-    
+
     print("Testing dependencies...")
     results.append(test_boto3_available())
     results.append(test_dspy_supports_bedrock())
     print()
-    
+
     print("Testing example files...")
     results.append(test_bedrock_example_imports())
     print()
-    
+
     print("=" * 60)
     if all(results):
         print("✓ All checks passed!")

@@ -29,10 +29,7 @@ class MedicalRecord(BaseModel):
     severity: Literal["mild", "moderate", "severe", "critical"] = Field(
         description="Severity level"
     )
-    symptoms: list[str] = Field(
-        default_factory=list,
-        description="Reported symptoms"
-    )
+    symptoms: list[str] = Field(default_factory=list, description="Reported symptoms")
     prescribed_treatment: str = Field(description="Treatment plan")
     follow_up_required: bool = Field(description="Whether follow-up is needed")
 
@@ -54,8 +51,8 @@ def main():
                 severity="mild",
                 symptoms=["sneezing", "runny nose", "itchy eyes"],
                 prescribed_treatment="Antihistamines (Claritin 10mg daily)",
-                follow_up_required=False
-            )
+                follow_up_required=False,
+            ),
         ),
         Example(
             text=(
@@ -71,8 +68,8 @@ def main():
                 severity="moderate",
                 symptoms=["increased thirst", "frequent urination", "fatigue"],
                 prescribed_treatment="Metformin 500mg twice daily and lifestyle modifications",
-                follow_up_required=True
-            )
+                follow_up_required=True,
+            ),
         ),
         Example(
             text=(
@@ -87,8 +84,8 @@ def main():
                 severity="severe",
                 symptoms=["high fever", "chest pain", "difficulty breathing"],
                 prescribed_treatment="IV antibiotics (Ceftriaxone) and oxygen therapy",
-                follow_up_required=True
-            )
+                follow_up_required=True,
+            ),
         ),
     ]
 
@@ -118,11 +115,11 @@ def main():
         api_version=azure_api_version,
         # API key will be read from AZURE_OPENAI_API_KEY env var
         verbose=True,
-        num_threads=2
+        num_threads=2,
     )
 
     print("Starting optimization with Azure OpenAI...")
-    print(f"Model: azure/gpt-4o")
+    print("Model: azure/gpt-4o")
     print(f"Endpoint: {azure_endpoint}")
     print(f"API Version: {azure_api_version}")
     print()
@@ -146,17 +143,15 @@ def main():
     print(f"  Improvement: {(result.optimized_score - result.baseline_score):.2f}")
 
     # Create optimized model
-    OptimizedMedicalRecord = create_optimized_model(
-        MedicalRecord,
-        result.optimized_descriptions
-    )
+    OptimizedMedicalRecord = create_optimized_model(MedicalRecord, result.optimized_descriptions)
 
     print("\n" + "=" * 60)
     print("Using with Azure OpenAI")
     print("=" * 60)
     print()
     print("Now you can use OptimizedMedicalRecord with Azure OpenAI:")
-    print("""
+    print(
+        """
 from openai import AzureOpenAI
 
 client = AzureOpenAI(
@@ -171,7 +166,8 @@ response = client.beta.chat.completions.parse(
     response_format=OptimizedMedicalRecord
 )
 record = response.choices[0].message.parsed
-""")
+"""
+    )
     print()
     print("Benefits of Azure OpenAI:")
     print("  • Enterprise-grade security and compliance")

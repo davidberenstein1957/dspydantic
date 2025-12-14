@@ -75,9 +75,7 @@ def test_pydantic_optimizer_module_forward_system_prompt() -> None:
 
     assert hasattr(result, "optimized_system_prompt")
     assert result.optimized_system_prompt == "Optimized system prompt"
-    module.system_prompt_optimizer.assert_called_once_with(
-        system_prompt="Original system prompt"
-    )
+    module.system_prompt_optimizer.assert_called_once_with(system_prompt="Original system prompt")
 
 
 def test_pydantic_optimizer_module_forward_instruction_prompt() -> None:
@@ -249,6 +247,8 @@ def test_pydantic_optimizer_initialization_with_prompts_only() -> None:
     # Should work even without field descriptions
     assert optimizer.system_prompt == "Extract user information"
     assert optimizer.instruction_prompt == "Parse the following text"
+
+
 def test_pydantic_optimizer_metric_function_extracts_prompts() -> None:
     """Test that metric function correctly extracts optimized prompts."""
     examples = [
@@ -461,4 +461,3 @@ def test_pydantic_optimizer_module_forward_with_field_descriptions_and_prompts()
     assert result.optimized_instruction_prompt == "Optimized instruction prompt"
     assert result.optimized_name == "Optimized name description"
     assert result.optimized_age == "Optimized age description"
-

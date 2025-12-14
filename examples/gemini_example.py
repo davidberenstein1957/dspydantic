@@ -25,14 +25,8 @@ class ProductReview(BaseModel):
         description="Overall sentiment of the review"
     )
     rating: int = Field(description="Rating from 1 to 5")
-    pros: list[str] = Field(
-        default_factory=list,
-        description="Positive aspects mentioned"
-    )
-    cons: list[str] = Field(
-        default_factory=list,
-        description="Negative aspects mentioned"
-    )
+    pros: list[str] = Field(default_factory=list, description="Positive aspects mentioned")
+    cons: list[str] = Field(default_factory=list, description="Negative aspects mentioned")
     would_recommend: bool = Field(description="Whether the reviewer would recommend")
 
 
@@ -55,11 +49,11 @@ def main():
                 pros=[
                     "Incredible noise cancellation",
                     "Amazing sound quality",
-                    "Long battery life"
+                    "Long battery life",
                 ],
                 cons=["Expensive price"],
-                would_recommend=True
-            )
+                would_recommend=True,
+            ),
         ),
         Example(
             text=(
@@ -73,16 +67,10 @@ def main():
                 product_name="Samsung Galaxy Buds2 Pro",
                 sentiment="mixed",
                 rating=3,
-                pros=[
-                    "Good fit",
-                    "Decent noise cancellation for price"
-                ],
-                cons=[
-                    "Average sound quality",
-                    "Poor battery life"
-                ],
-                would_recommend=False
-            )
+                pros=["Good fit", "Decent noise cancellation for price"],
+                cons=["Average sound quality", "Poor battery life"],
+                would_recommend=False,
+            ),
         ),
         Example(
             text=(
@@ -102,10 +90,10 @@ def main():
                     "Bad sound quality",
                     "Ineffective noise cancellation",
                     "Short battery life",
-                    "Unhelpful customer service"
+                    "Unhelpful customer service",
                 ],
-                would_recommend=False
-            )
+                would_recommend=False,
+            ),
         ),
         Example(
             text=(
@@ -126,11 +114,11 @@ def main():
                     "Natural transparency mode",
                     "Great for calls",
                     "Amazing spatial audio",
-                    "Convenient MagSafe case"
+                    "Convenient MagSafe case",
                 ],
                 cons=["High price"],
-                would_recommend=True
-            )
+                would_recommend=True,
+            ),
         ),
     ]
 
@@ -145,7 +133,7 @@ def main():
         examples=examples,
         model_id="gemini/gemini-2.5-flash-lite",
         verbose=True,
-        num_threads=2
+        num_threads=2,
     )
 
     print("Starting optimization with Google Gemini...")
@@ -171,10 +159,7 @@ def main():
     print(f"  Improvement: {(result.optimized_score - result.baseline_score):.2f}")
 
     # Create optimized model
-    OptimizedProductReview = create_optimized_model(
-        ProductReview,
-        result.optimized_descriptions
-    )
+    OptimizedProductReview = create_optimized_model(ProductReview, result.optimized_descriptions)
 
     print("\n" + "=" * 60)
     print("Using the Optimized Model")
@@ -183,7 +168,8 @@ def main():
     print("You can now use OptimizedProductReview with any LLM provider:")
     print()
     print("Example with OpenAI:")
-    print("""
+    print(
+        """
 from openai import OpenAI
 
 client = OpenAI()
@@ -193,10 +179,12 @@ response = client.beta.chat.completions.parse(
     response_format=OptimizedProductReview
 )
 review = response.choices[0].message.parsed
-""")
+"""
+    )
     print()
     print("Example with Anthropic Claude:")
-    print("""
+    print(
+        """
 import anthropic
 import instructor
 
@@ -207,10 +195,12 @@ review = client.messages.create(
     messages=[{"role": "user", "content": review_text}],
     response_model=OptimizedProductReview
 )
-""")
+"""
+    )
     print()
     print("Example with Google Gemini:")
-    print("""
+    print(
+        """
 import google.generativeai as genai
 import instructor
 
@@ -221,7 +211,8 @@ review = client.messages.create(
     messages=[{"role": "user", "content": review_text}],
     response_model=OptimizedProductReview
 )
-""")
+"""
+    )
 
 
 if __name__ == "__main__":

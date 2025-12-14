@@ -34,9 +34,7 @@ def load_imdb_examples(num_examples: int = 10) -> list[Example]:
     try:
         from datasets import load_dataset
     except ImportError:
-        raise ImportError(
-            "datasets library is required. Install it with: uv pip install datasets"
-        )
+        raise ImportError("datasets library is required. Install it with: uv pip install datasets")
 
     # Load the IMDB dataset
     dataset = load_dataset("stanfordnlp/imdb", split="train")
@@ -153,4 +151,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
