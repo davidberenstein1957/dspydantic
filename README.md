@@ -85,7 +85,7 @@ uv pip install dspydantic
 
 **For AWS Bedrock support**, also install boto3:
 ```bash
-pip install dspydantic boto3
+uv pip install dspydantic boto3
 ```
 
 ## 🌟 Key Features
