@@ -83,9 +83,7 @@ class PydanticOptimizerModule(dspy.Module):
                 if not field_type:
                     field_type = self.field_types.get(field_path, "")
                 result = optimizer(field_description=description, field_type=field_type)
-                optimized[f"optimized_{field_path}"] = (
-                    result.optimized_field_description
-                )
+                optimized[f"optimized_{field_path}"] = result.optimized_field_description
 
         # Optimize system prompt
         if self.has_system_prompt and system_prompt is not None:
@@ -212,4 +210,3 @@ class PydanticOptimizerModule(dspy.Module):
                 optimized["optimized_instruction_prompt"] = result.optimized_instruction_prompt
 
         return dspy.Prediction(**optimized)
-

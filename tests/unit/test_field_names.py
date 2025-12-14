@@ -1,4 +1,5 @@
 """Quick test to verify field names are used as descriptions when missing."""
+
 from pydantic import BaseModel, Field
 
 from dspydantic.extractor import extract_field_descriptions
@@ -6,6 +7,7 @@ from dspydantic.extractor import extract_field_descriptions
 
 class TestModel(BaseModel):
     """Test model with mixed descriptions."""
+
     name: str  # No description
     age: int = Field(description="User age")  # Has description
     email: str  # No description

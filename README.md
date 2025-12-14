@@ -83,11 +83,17 @@ Or with `uv`:
 uv pip install dspydantic
 ```
 
+**For AWS Bedrock support**, also install boto3:
+```bash
+uv pip install dspydantic boto3
+```
+
 ## 🌟 Key Features
 
 - **Auto-optimization**: Finds best field descriptions automatically
 - **Simple input**: Just examples (text/images/PDFs) + your Pydantic model
 - **Better output**: Optimized model ready to use with improved accuracy
+- **Multiple LLM providers**: OpenAI, Azure OpenAI, Google Gemini, AWS Bedrock (Claude), and more
 - **Template prompts**: Dynamic prompts with `{placeholders}` for context-aware extraction
 - **Enum & Literal support**: Optimize classification models
 - **Multiple formats**: Text, images, PDFs—works with any input type
@@ -101,6 +107,9 @@ Check out the [examples directory](examples/) for complete working examples:
 - **[Image classification](examples/image_example.py)**: Classify MNIST handwritten digits using `Literal[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]`—demonstrates vision capabilities and Literal type optimization
 - **[Text classification](examples/imdb_example.py)**: Classify IMDB movie review sentiment with `Literal["positive", "negative"]` and template prompts—shows dynamic prompt formatting with `{review}` placeholders
 - **[Human-in-the-loop](examples/hitl_example.py)**: Interactive evaluation with GUI—get human feedback during optimization
+- **[AWS Bedrock](examples/bedrock_example.py)**: Use AWS Bedrock with Claude 3.5 Haiku/Sonnet for managed, secure AI with AWS-native integration
+- **[Azure OpenAI](examples/azure_example.py)**: Use Azure OpenAI for enterprise-grade deployment with enhanced security
+- **[Google Gemini](examples/gemini_example.py)**: Use Google's Gemini models for multimodal and long-context tasks
 
 ## Basic Usage
 
@@ -314,6 +323,99 @@ examples = [
 ```
 
 ## Advanced Usage
+
+### Using Different LLM Providers
+
+DSPydantic supports multiple LLM providers through DSPy's unified interface. Simply specify the provider prefix in the `model_id` and set the appropriate API key.
+
+#### OpenAI (Default)
+
+```python
+from dspydantic import PydanticOptimizer
+
+optimizer = PydanticOptimizer(
+    model=YourModel,
+    examples=examples,
+    model_id="gpt-4o",  # or "gpt-4-turbo", "gpt-3.5-turbo"
+    api_key="your-openai-key"  # or set OPENAI_API_KEY env var
+)
+```
+
+#### Azure OpenAI
+
+```python
+optimizer = PydanticOptimizer(
+    model=YourModel,
+    examples=examples,
+    model_id="azure/gpt-4o",
+    api_key="your-azure-key",  # or set AZURE_OPENAI_API_KEY env var
+    api_base="https://your-resource.openai.azure.com",
+    api_version="2024-02-15-preview"
+)
+```
+
+#### Google Gemini
+
+```python
+optimizer = PydanticOptimizer(
+    model=YourModel,
+    examples=examples,
+    model_id="gemini/gemini-1.5-pro",
+    # Other options: "gemini/gemini-1.5-flash", "gemini/gemini-1.5-pro-latest"
+    api_key="your-google-key"  # or set GOOGLE_API_KEY env var
+)
+```
+
+#### AWS Bedrock (Claude)
+
+```python
+import dspy
+
+# DSPy will automatically use boto3 to connect to AWS Bedrock
+# Configure AWS credentials via AWS_PROFILE, environment variables, or IAM role
+lm = dspy.LM(
+    model="bedrock/us.anthropic.claude-3-5-haiku-20241022-v1:0",
+    # Other options:
+    # "bedrock/us.anthropic.claude-3-5-sonnet-20241022-v2:0" (Sonnet v2)
+    # "bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0" (without region prefix)
+    region_name="us-east-1"  # or your preferred AWS region
+)
+
+optimizer = PydanticOptimizer(
+    model=YourModel,
+    examples=examples,
+    lm=lm
+)
+```
+
+**AWS Bedrock Setup:**
+1. Configure AWS credentials:
+   - AWS Profile: Set `AWS_PROFILE` environment variable
+   - Environment: Set `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`
+   - IAM Role: Automatically used when running on EC2/ECS/Lambda
+2. Ensure IAM permissions include `bedrock:InvokeModel`
+3. Install boto3: `pip install boto3`
+
+See [bedrock_example.py](examples/bedrock_example.py) for a complete example with Claude 3.5 Haiku and Sonnet v2.
+
+#### Using Custom DSPy LM
+
+For more control, pass a custom DSPy LM instance:
+
+```python
+import dspy
+
+custom_lm = dspy.LM(
+    model="anthropic/claude-3-5-sonnet-20241022",
+    api_key="your-anthropic-key"
+)
+
+optimizer = PydanticOptimizer(
+    model=YourModel,
+    examples=examples,
+    lm=custom_lm
+)
+```
 
 ### Other modalities
 
@@ -582,9 +684,16 @@ Main optimizer class.
 - `system_prompt` (str | None): Optional system prompt to optimize
 - `instruction_prompt` (str | None): Optional instruction prompt to optimize (supports `{placeholders}`)
 - `lm` (dspy.LM | None): Optional DSPy LM instance (overrides model_id/api_key)
-- `model_id` (str): LLM model ID (default: "gpt-4o")
-- `api_key` (str | None): API key (default: from OPENAI_API_KEY env var)
-- `api_base` (str | None): API base URL (for Azure OpenAI)
+- `model_id` (str): LLM model ID. Supports multiple providers:
+  - OpenAI: `"gpt-4o"`, `"gpt-4-turbo"`, `"gpt-3.5-turbo"`
+  - Azure: `"azure/gpt-4o"`
+  - Gemini: `"gemini/gemini-1.5-pro"`, `"gemini/gemini-1.5-flash"`
+  - Default: `"gpt-4o"`
+- `api_key` (str | None): API key. If None, reads from provider-specific environment variable:
+  - `OPENAI_API_KEY` for OpenAI
+  - `AZURE_OPENAI_API_KEY` for Azure OpenAI
+  - `GOOGLE_API_KEY` for Gemini
+- `api_base` (str | None): API base URL (for Azure OpenAI or custom endpoints)
 - `api_version` (str | None): API version (for Azure OpenAI)
 - `num_threads` (int): Optimization threads (default: 4)
 - `init_temperature` (float): Initial temperature (default: 1.0)

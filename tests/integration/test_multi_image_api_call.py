@@ -109,5 +109,3 @@ def test_multi_image_api_call() -> None:
                 pdf_path.parent.rmdir()
             except OSError:
                 pass
-
-

@@ -121,9 +121,7 @@ def load_peteval_examples(num_examples: int = 10) -> list[Example]:
     try:
         from datasets import load_dataset
     except ImportError:
-        raise ImportError(
-            "datasets library is required. Install it with: uv pip install datasets"
-        )
+        raise ImportError("datasets library is required. Install it with: uv pip install datasets")
 
     # Load the PetEVAL dataset
     dataset = load_dataset("SAVSNET/PetEVAL", split="test")
@@ -245,7 +243,7 @@ def main():
     print("=" * 60)
     print(f"Baseline score: {result.baseline_score:.2%}")
     print(f"Optimized score: {result.optimized_score:.2%}")
-    improvement = result.metrics['improvement']
+    improvement = result.metrics["improvement"]
     print(f"Improvement: {improvement:+.2%}")
     print("\nOptimized system prompt:")
     print(f"  {result.optimized_system_prompt}")
@@ -258,4 +256,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

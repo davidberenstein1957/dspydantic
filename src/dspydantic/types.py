@@ -158,4 +158,3 @@ class Example:
                 self.input_data = {}
             else:
                 raise
-

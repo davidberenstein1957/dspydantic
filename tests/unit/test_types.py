@@ -48,4 +48,3 @@ def test_optimization_result_creation() -> None:
     assert result.baseline_score == 0.75
     assert result.optimized_score == 0.85
     assert result.metrics["average_score"] == 0.85
-

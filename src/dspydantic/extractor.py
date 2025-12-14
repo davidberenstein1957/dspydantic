@@ -8,9 +8,7 @@ from pydantic import BaseModel, Field, create_model
 from pydantic.fields import FieldInfo
 
 
-def extract_field_descriptions(
-    model: type[BaseModel], prefix: str = ""
-) -> dict[str, str]:
+def extract_field_descriptions(model: type[BaseModel], prefix: str = "") -> dict[str, str]:
     """Extract field descriptions from a Pydantic model recursively.
 
     If a field doesn't have a description, the field name is used as the description.
@@ -56,9 +54,7 @@ def extract_field_descriptions(
             defs_dict = {}
         properties = schema_dict.get("properties", {})
         for field_name, field_schema in properties.items():
-            field_path = (
-                f"{current_prefix}.{field_name}" if current_prefix else field_name
-            )
+            field_path = f"{current_prefix}.{field_name}" if current_prefix else field_name
 
             # Handle $ref references (Pydantic v2 nested models)
             if "$ref" in field_schema:
@@ -227,15 +223,15 @@ def apply_optimized_descriptions(
     model: type[BaseModel], optimized_descriptions: dict[str, str]
 ) -> dict[str, Any]:
     """Create a modified JSON schema with optimized field descriptions.
-    
+
     This function creates a new JSON schema dictionary with updated field descriptions
     that can be used with OpenAI's structured outputs or other systems that accept
     JSON schemas.
-    
+
     Args:
         model: The original Pydantic model class.
         optimized_descriptions: Dictionary mapping field paths to optimized descriptions.
-    
+
     Returns:
         Modified JSON schema as a dictionary. For OpenAI, this should be wrapped in:
         {
@@ -245,7 +241,7 @@ def apply_optimized_descriptions(
                 "schema": <returned_schema>
             }
         }
-    
+
     Example:
         ```python
         optimized = {"name": "The complete full name of the user"}
@@ -271,9 +267,7 @@ def apply_optimized_descriptions(
             defs_dict = {}
         properties = schema_dict.get("properties", {})
         for field_name, field_schema in properties.items():
-            field_path = (
-                f"{current_prefix}.{field_name}" if current_prefix else field_name
-            )
+            field_path = f"{current_prefix}.{field_name}" if current_prefix else field_name
 
             # Handle $ref references (Pydantic v2 nested models)
             if "$ref" in field_schema:

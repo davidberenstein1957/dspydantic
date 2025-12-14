@@ -25,4 +25,3 @@ __all__ = [
     "image_to_base64",
     "pdf_to_base64_images",
 ]
-

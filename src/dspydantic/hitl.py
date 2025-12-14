@@ -133,9 +133,7 @@ class HitlManager:
                 pass
             self._loading_window = None
 
-    def _convert_to_pil_images(
-        self, images: list[str] | list[Any] | None
-    ) -> list[Any] | None:
+    def _convert_to_pil_images(self, images: list[str] | list[Any] | None) -> list[Any] | None:
         """Convert base64 strings or other formats to PIL Image objects.
 
         Args:
@@ -670,7 +668,9 @@ class HitlManager:
         """
         # Track evaluation count for progress
         evaluation_counter = {"count": 0}
-        total_examples = len(self.optimizer.examples) if hasattr(self.optimizer, "examples") else None
+        total_examples = (
+            len(self.optimizer.examples) if hasattr(self.optimizer, "examples") else None
+        )
 
         def levenshtein_distance(s1: str, s2: str) -> int:
             """Calculate Levenshtein distance between two strings."""
@@ -785,7 +785,9 @@ class HitlManager:
                 input_text = str(input_data)
 
             # Apply optimized descriptions to the Pydantic model schema
-            modified_schema = apply_optimized_descriptions(self.optimizer.model, optimized_descriptions)
+            modified_schema = apply_optimized_descriptions(
+                self.optimizer.model, optimized_descriptions
+            )
 
             # Create the full prompt for extraction
             prompt_parts = []
@@ -901,4 +903,3 @@ class HitlManager:
                     return 1.0
 
         return evaluate
-
