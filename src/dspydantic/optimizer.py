@@ -127,6 +127,19 @@ class PydanticOptimizer:
                 api_version="2024-02-15-preview"
             )
 
+        Using AWS Bedrock (Claude)::
+
+            import dspy
+            lm = dspy.LM(
+                model="bedrock/us.anthropic.claude-3-5-haiku-20241022-v1:0",
+                region_name="us-east-1"
+            )
+            optimizer = PydanticOptimizer(
+                model=User,
+                examples=examples,
+                lm=lm
+            )
+
         Passing optimizer as a string::
 
             optimizer = PydanticOptimizer(
@@ -254,11 +267,16 @@ class PydanticOptimizer:
                 - OpenAI: "gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo"
                 - Azure OpenAI: "azure/gpt-4o", "azure/gpt-4-turbo"
                 - Gemini: "gemini/gemini-2.5-flash-lite"
+                - AWS Bedrock: "bedrock/us.anthropic.claude-3-5-haiku-20241022-v1:0",
+                  "bedrock/us.anthropic.claude-3-5-sonnet-20241022-v2:0"
+                  (Requires boto3 and AWS credentials configured)
                 Only used if `lm` is None.
             api_key: Optional API key. If None, reads from provider-specific environment variable:
                 - OPENAI_API_KEY for OpenAI
                 - AZURE_OPENAI_API_KEY for Azure OpenAI
                 - GOOGLE_API_KEY for Gemini
+                - AWS credentials via AWS_PROFILE, AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY,
+                  or IAM role for Bedrock
                 Only used if `lm` is None.
             api_base: Optional API base URL (for Azure OpenAI or custom endpoints).
                 Only used if `lm` is None.

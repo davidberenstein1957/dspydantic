@@ -83,11 +83,17 @@ Or with `uv`:
 uv pip install dspydantic
 ```
 
+**For AWS Bedrock support**, also install boto3:
+```bash
+pip install dspydantic boto3
+```
+
 ## 🌟 Key Features
 
 - **Auto-optimization**: Finds best field descriptions automatically
 - **Simple input**: Just examples (text/images/PDFs) + your Pydantic model
 - **Better output**: Optimized model ready to use with improved accuracy
+- **Multiple LLM providers**: OpenAI, Azure OpenAI, Google Gemini, AWS Bedrock (Claude), and more
 - **Template prompts**: Dynamic prompts with `{placeholders}` for context-aware extraction
 - **Enum & Literal support**: Optimize classification models
 - **Multiple formats**: Text, images, PDFs—works with any input type
@@ -101,6 +107,7 @@ Check out the [examples directory](examples/) for complete working examples:
 - **[Image classification](examples/image_example.py)**: Classify MNIST handwritten digits using `Literal[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]`—demonstrates vision capabilities and Literal type optimization
 - **[Text classification](examples/imdb_example.py)**: Classify IMDB movie review sentiment with `Literal["positive", "negative"]` and template prompts—shows dynamic prompt formatting with `{review}` placeholders
 - **[Human-in-the-loop](examples/hitl_example.py)**: Interactive evaluation with GUI—get human feedback during optimization
+- **[AWS Bedrock](examples/bedrock_example.py)**: Use AWS Bedrock with Claude 3.5 Haiku/Sonnet for managed, secure AI with AWS-native integration
 - **[Azure OpenAI](examples/azure_example.py)**: Use Azure OpenAI for enterprise-grade deployment with enhanced security
 - **[Google Gemini](examples/gemini_example.py)**: Use Google's Gemini models for multimodal and long-context tasks
 
@@ -358,6 +365,38 @@ optimizer = PydanticOptimizer(
     api_key="your-google-key"  # or set GOOGLE_API_KEY env var
 )
 ```
+
+#### AWS Bedrock (Claude)
+
+```python
+import dspy
+
+# DSPy will automatically use boto3 to connect to AWS Bedrock
+# Configure AWS credentials via AWS_PROFILE, environment variables, or IAM role
+lm = dspy.LM(
+    model="bedrock/us.anthropic.claude-3-5-haiku-20241022-v1:0",
+    # Other options:
+    # "bedrock/us.anthropic.claude-3-5-sonnet-20241022-v2:0" (Sonnet v2)
+    # "bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0" (without region prefix)
+    region_name="us-east-1"  # or your preferred AWS region
+)
+
+optimizer = PydanticOptimizer(
+    model=YourModel,
+    examples=examples,
+    lm=lm
+)
+```
+
+**AWS Bedrock Setup:**
+1. Configure AWS credentials:
+   - AWS Profile: Set `AWS_PROFILE` environment variable
+   - Environment: Set `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`
+   - IAM Role: Automatically used when running on EC2/ECS/Lambda
+2. Ensure IAM permissions include `bedrock:InvokeModel`
+3. Install boto3: `pip install boto3`
+
+See [bedrock_example.py](examples/bedrock_example.py) for a complete example with Claude 3.5 Haiku and Sonnet v2.
 
 #### Using Custom DSPy LM
 

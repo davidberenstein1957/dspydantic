@@ -25,6 +25,7 @@ dependencies = [
     "deepdiff>=8.0.0",
     "pillow>=10.0.0",
     "pdf2image>=1.16.0",
+    "boto3>=1.26.0",
 ]
 
 [project.optional-dependencies]
