@@ -1,7 +1,7 @@
 """Quick test to verify field names are used as descriptions when missing."""
 from pydantic import BaseModel, Field
 
-from dspydantic.extractor import extract_field_descriptions
+from dspydantic.extractors import extract_field_descriptions
 
 
 class TestModel(BaseModel):

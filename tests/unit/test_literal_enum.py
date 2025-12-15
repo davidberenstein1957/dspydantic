@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from dspydantic.extractor import extract_field_types
+from dspydantic.extractors import extract_field_types
 
 
 class Status(str, Enum):

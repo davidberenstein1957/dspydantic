@@ -14,7 +14,7 @@ from typing import Any
 import dspy
 from pydantic import BaseModel
 
-from dspydantic.extractor import apply_optimized_descriptions
+from dspydantic.extractors.dspy import apply_optimized_descriptions
 from dspydantic.types import Example
 from dspydantic.utils import (
     build_image_signature_and_kwargs,

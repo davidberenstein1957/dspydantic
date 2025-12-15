@@ -1,22 +1,22 @@
 """Main optimizer class for Pydantic models using DSPy."""
 
-import os
 from collections.abc import Callable
 from typing import Any
 
 import dspy
-from dspy.teleprompt import MIPROv2, Teleprompter  # noqa: E402
+from dspy.teleprompt import Teleprompter
 from pydantic import BaseModel
 
-from dspydantic.evaluators import default_evaluate_fn
-from dspydantic.extractor import extract_field_descriptions, extract_field_types
+from dspydantic.evaluators.dspy import default_evaluate_fn
+from dspydantic.extractors.dspy import extract_field_descriptions, extract_field_types
 from dspydantic.hitl import HitlManager
-from dspydantic.module import PydanticOptimizerModule
+from dspydantic.modules.dspy import PydanticOptimizerModule
+from dspydantic.optimizers.base import BaseOptimizer
 from dspydantic.types import Example, OptimizationResult
 from dspydantic.utils import convert_images_to_dspy_images, format_instruction_prompt_template
 
 
-class PydanticOptimizer:
+class PydanticOptimizer(BaseOptimizer):
     """Optimizer that uses DSPy to optimize Pydantic model field descriptions.
 
     This class optimizes field descriptions in Pydantic models by using DSPy
@@ -267,52 +267,27 @@ class PydanticOptimizer:
                 is not a valid Teleprompter subclass name.
             TypeError: If optimizer is not a string, Teleprompter instance, or None.
         """
-        if not examples:
-            raise ValueError("At least one example must be provided")
+        # Initialize base class
+        super().__init__(
+            examples=examples,
+            evaluate_fn=evaluate_fn,
+            lm=lm,
+            model_id=model_id,
+            api_key=api_key,
+            api_base=api_base,
+            api_version=api_version,
+            num_threads=num_threads,
+            init_temperature=init_temperature,
+            verbose=verbose,
+            optimizer=optimizer,
+            train_split=train_split,
+            optimizer_kwargs=optimizer_kwargs,
+            exclude_fields=exclude_fields,
+        )
 
         self.model = model
-        self.examples = examples
-        self.evaluate_fn = evaluate_fn
-        self.exclude_fields = exclude_fields
         self.system_prompt = system_prompt
         self.instruction_prompt = instruction_prompt
-        self.lm = lm
-        self.model_id = model_id
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
-        self.api_base = api_base
-        self.api_version = api_version
-        self.num_threads = num_threads
-        self.init_temperature = init_temperature
-        self.verbose = verbose
-        self.train_split = train_split
-        self.optimizer_kwargs = optimizer_kwargs or {}
-
-        # Handle optimizer parameter (can be string or Teleprompter instance)
-        if optimizer is None:
-            # Auto-select optimizer based on dataset size
-            self.optimizer_type = self._auto_select_optimizer()
-            self.custom_optimizer = None
-        elif isinstance(optimizer, str):
-            # String provided - validate and store as type
-            self.optimizer_type = optimizer.lower()
-            # Validate optimizer type by checking if it's a Teleprompter subclass
-            teleprompter_classes = self._get_teleprompter_subclasses()
-            if self.optimizer_type not in teleprompter_classes:
-                valid_optimizers = sorted(teleprompter_classes.keys())
-                raise ValueError(
-                    f"optimizer '{optimizer}' is not a valid Teleprompter subclass. "
-                    f"Valid options: {valid_optimizers}"
-                )
-            self.custom_optimizer = None
-        elif isinstance(optimizer, Teleprompter):
-            # Teleprompter instance provided
-            self.custom_optimizer = optimizer
-            self.optimizer_type = "custom"
-        else:
-            raise TypeError(
-                f"optimizer must be a string, Teleprompter instance, or None, "
-                f"got {type(optimizer).__name__}"
-            )
 
         # Extract field descriptions from Pydantic model
         # Field descriptions are automatically set from field names if not provided
@@ -336,61 +311,17 @@ class PydanticOptimizer:
                 "system_prompt, or instruction_prompt"
             )
 
-    @staticmethod
-    def _get_teleprompter_subclasses() -> dict[str, type[Teleprompter]]:
-        """Get all subclasses of Teleprompter and create a mapping by lowercase name.
+
+    def _create_metric_function(self, lm: dspy.LM) -> Callable[..., float]:
+        """Create a metric function for DSPy optimization.
+
+        Args:
+            lm: The DSPy language model (needed for default evaluation function).
 
         Returns:
-            Dictionary mapping lowercase class names to Teleprompter subclasses.
+            A function that evaluates prompt performance.
         """
-
-        # Get all subclasses recursively
-        def get_all_subclasses(cls: type) -> set[type]:
-            """Recursively get all subclasses of a class."""
-            subclasses = set()
-            for subclass in cls.__subclasses__():
-                subclasses.add(subclass)
-                subclasses.update(get_all_subclasses(subclass))
-            return subclasses
-
-        subclasses = get_all_subclasses(Teleprompter)
-        # Create mapping: lowercase class name -> class
-        mapping: dict[str, type[Teleprompter]] = {}
-        for subclass in subclasses:
-            # Skip abstract classes or classes that shouldn't be used directly
-            if subclass.__name__ == "Teleprompter":
-                continue
-            # Map lowercase name to class
-            mapping[subclass.__name__.lower()] = subclass
-
-        # Add special case for miprov2zeroshot (which is MIPROv2 with zero-shot settings)
-        if "miprov2" in mapping:
-            mapping["miprov2zeroshot"] = mapping["miprov2"]
-
-        return mapping
-
-    def _auto_select_optimizer(self) -> str:
-        """Auto-select the best optimizer based on the number of examples.
-
-        Selection logic:
-        - Very small datasets (1-2 examples): Use MIPROv2ZeroShot (avoids BootstrapFewShot bug)
-        - Small datasets (3-19 examples): Use BootstrapFewShot
-        - Larger datasets (>= 20 examples): Use BootstrapFewShotWithRandomSearch
-
-        Returns:
-            String name of the recommended optimizer type.
-        """
-        num_examples = len(self.examples)
-
-        if num_examples <= 2:
-            # Very small dataset - use MIPROv2ZeroShot to avoid BootstrapFewShot bug
-            return "miprov2zeroshot"
-        elif num_examples < 20:
-            # Small dataset - use BootstrapFewShot
-            return "bootstrapfewshot"
-        else:
-            # Larger dataset - use BootstrapFewShotWithRandomSearch
-            return "bootstrapfewshotwithrandomsearch"
+        return self._create_pydantic_metric_function(lm)
 
     def _default_evaluate_fn(
         self, lm: dspy.LM, metric: str = "exact", judge_lm: dspy.LM | None = None
@@ -496,8 +427,165 @@ class PydanticOptimizer:
         """
         return self._hitl_manager.create_hitl_evaluate_fn(lm, metric)
 
-    def _create_metric_function(self, lm: dspy.LM) -> Callable[..., float]:
-        """Create a metric function for DSPy optimization.
+    def _create_program(self) -> Any:
+        """Create DSPy program for optimization.
+
+        Returns:
+            DSPy program instance.
+        """
+        return PydanticOptimizerModule(
+            field_descriptions=self.field_descriptions,
+            field_types=self.field_types,
+            has_system_prompt=self.system_prompt is not None,
+            has_instruction_prompt=self.instruction_prompt is not None,
+        )
+
+    def _extract_optimized_descriptions(
+        self, test_result: Any
+    ) -> dict[str, str]:
+        """Extract optimized descriptions from test result.
+
+        Args:
+            test_result: Result from optimized program.
+
+        Returns:
+            Dictionary of optimized descriptions.
+        """
+        optimized_field_descriptions: dict[str, str] = {}
+        for field_path in self.field_descriptions.keys():
+            attr_name = f"optimized_{field_path}"
+            if hasattr(test_result, attr_name):
+                optimized_field_descriptions[field_path] = getattr(
+                    test_result, attr_name
+                )
+        return optimized_field_descriptions
+
+    def _get_program_args(self) -> dict[str, Any]:
+        """Get arguments for program execution.
+
+        Returns:
+            Dictionary of program arguments.
+        """
+        program_args: dict[str, Any] = {}
+        program_args.update(self.field_descriptions)
+        # Add field types with field_type_ prefix
+        for field_path, field_type in self.field_types.items():
+            program_args[f"field_type_{field_path}"] = field_type
+        if self.system_prompt is not None:
+            program_args["system_prompt"] = self.system_prompt
+        if self.instruction_prompt is not None:
+            program_args["instruction_prompt"] = self.instruction_prompt
+        return program_args
+
+    def _evaluate_baseline(
+        self, val_examples: list[dspy.Example], evaluate_fn: Callable
+    ) -> float:
+        """Evaluate baseline configuration.
+
+        Args:
+            val_examples: Validation examples.
+            evaluate_fn: Evaluation function.
+
+        Returns:
+            Baseline average score.
+        """
+        baseline_scores = []
+        for val_ex in val_examples:
+            # Convert DSPy example to our Example object
+            example_obj = self._dspy_example_to_example(val_ex)
+            # Use original prompts and descriptions (no optimization)
+            baseline_score = evaluate_fn(
+                example_obj,
+                self.field_descriptions,
+                self.system_prompt,
+                self.instruction_prompt,
+            )
+            baseline_scores.append(baseline_score)
+
+        baseline_avg = (
+            sum(baseline_scores) / len(baseline_scores) if baseline_scores else 0.0
+        )
+        if self.verbose:
+            print(f"Baseline average score: {baseline_avg:.2%}")
+        return baseline_avg
+
+    def _evaluate_optimized(
+        self,
+        val_examples: list[dspy.Example],
+        optimized_program: Any,
+        evaluate_fn: Callable,
+    ) -> float:
+        """Evaluate optimized configuration.
+
+        Args:
+            val_examples: Validation examples.
+            optimized_program: Optimized program.
+            evaluate_fn: Evaluation function.
+
+        Returns:
+            Optimized average score.
+        """
+        evaluation_scores = []
+        for val_ex in val_examples:
+            # Get optimized descriptions and prompts for this example
+            val_program_args: dict[str, Any] = {}
+            for field_path in self.field_descriptions.keys():
+                if hasattr(val_ex, field_path):
+                    val_program_args[field_path] = getattr(val_ex, field_path)
+                else:
+                    val_program_args[field_path] = self.field_descriptions[field_path]
+
+            # Add field types
+            for field_path in self.field_types.keys():
+                field_type_key = f"field_type_{field_path}"
+                if hasattr(val_ex, field_type_key):
+                    val_program_args[field_type_key] = getattr(val_ex, field_type_key)
+                else:
+                    val_program_args[field_type_key] = self.field_types[field_path]
+
+            if self.system_prompt is not None:
+                val_program_args["system_prompt"] = self.system_prompt
+            if self.instruction_prompt is not None:
+                val_program_args["instruction_prompt"] = self.instruction_prompt
+
+            prediction = optimized_program(**val_program_args)
+
+            # Extract optimized descriptions and prompts from prediction
+            pred_descriptions: dict[str, str] = {}
+            pred_system_prompt: str | None = None
+            pred_instruction_prompt: str | None = None
+
+            for field_path in self.field_descriptions.keys():
+                attr_name = f"optimized_{field_path}"
+                if hasattr(prediction, attr_name):
+                    pred_descriptions[field_path] = getattr(prediction, attr_name)
+
+            if self.system_prompt is not None:
+                if hasattr(prediction, "optimized_system_prompt"):
+                    pred_system_prompt = getattr(prediction, "optimized_system_prompt")
+
+            if self.instruction_prompt is not None:
+                if hasattr(prediction, "optimized_instruction_prompt"):
+                    pred_instruction_prompt = getattr(
+                        prediction, "optimized_instruction_prompt"
+                    )
+
+            # Convert DSPy example to our Example object
+            example_obj = self._dspy_example_to_example(val_ex)
+            score = evaluate_fn(
+                example_obj,
+                pred_descriptions,
+                pred_system_prompt,
+                pred_instruction_prompt,
+            )
+            evaluation_scores.append(score)
+
+        return (
+            sum(evaluation_scores) / len(evaluation_scores) if evaluation_scores else 0.0
+        )
+
+    def _create_pydantic_metric_function(self, lm: dspy.LM) -> Callable[..., float]:
+        """Create a metric function for DSPy optimization (Pydantic-specific).
 
         Args:
             lm: The DSPy language model (needed for default evaluation function).
@@ -852,25 +940,8 @@ class PydanticOptimizer:
             print(f"Optimization threads: {self.num_threads}")
             print(f"{'='*60}\n")
 
-        # Configure DSPy LM - use provided lm or create one
-        if self.lm is not None:
-            lm = self.lm
-        elif self.api_base:
-            lm = dspy.LM(
-                self.model_id,
-                api_key=self.api_key,
-                api_base=self.api_base,
-                api_version=self.api_version,
-            )
-        else:
-            lm = dspy.LM(
-                self.model_id,
-                api_key=self.api_key,
-            )
-
-        # Configure DSPy LM in the main thread before optimization
-        # This ensures the LM is available to all threads spawned by the optimizer
-        # We configure it here so it's available when the optimizer spawns worker threads
+        # Create and configure LM
+        lm = self._create_lm()
         dspy.configure(lm=lm)
 
         # Ensure we have a valid evaluation function
@@ -902,100 +973,26 @@ class PydanticOptimizer:
         else:
             raise TypeError(f"Unexpected type for evaluate_fn: {type(evaluate_fn_raw)}")
 
-        # Create DSPy program with field descriptions, types, and prompts
-        program = PydanticOptimizerModule(
-            field_descriptions=self.field_descriptions,
-            field_types=self.field_types,
-            has_system_prompt=self.system_prompt is not None,
-            has_instruction_prompt=self.instruction_prompt is not None,
-        )
-
-        # Prepare examples for DSPy
+        # Create program and prepare examples
+        program = self._create_program()
         trainset = self._prepare_dspy_examples()
-
-        # Split into train and validation sets
-        # Ensure at least one example in trainset (needed for optimizers like MIPROv2)
-        split_idx = max(1, int(len(trainset) * self.train_split))
-        train_examples = trainset[:split_idx]
-        val_examples = trainset[split_idx:] if split_idx < len(trainset) else trainset
+        train_examples, val_examples = self._split_examples(trainset)
 
         if self.verbose:
             print(f"Training examples: {len(train_examples)}")
             print(f"Validation examples: {len(val_examples)}")
 
-        # Create metric function
+        # Create metric and optimizer
         metric = self._create_metric_function(lm)
+        optimizer = self._create_optimizer_instance(metric)
 
-        # Initialize optimizer based on optimizer_type or use custom optimizer
-        optimizer: Teleprompter
-        if self.custom_optimizer is not None:
-            # Use custom optimizer directly
-            optimizer = self.custom_optimizer
-            if self.verbose:
-                print(f"Using custom optimizer: {type(optimizer).__name__}")
-        elif self.optimizer_type == "miprov2zeroshot":
-            # Special case: MIPROv2 with zero-shot settings
-            default_kwargs = {
-                "metric": metric,
-                "num_threads": self.num_threads,
-                "init_temperature": self.init_temperature,
-                "auto": "light",
-                "max_bootstrapped_demos": 0,
-                "max_labeled_demos": 0,
-            }
-            merged_kwargs = {**default_kwargs, **self.optimizer_kwargs}
-            optimizer = MIPROv2(**merged_kwargs)
-        elif self.optimizer_type == "miprov2":
-            # Special case: MIPROv2 with default settings
-            default_kwargs = {
-                "metric": metric,
-                "num_threads": self.num_threads,
-                "init_temperature": self.init_temperature,
-                "auto": "light",
-            }
-            merged_kwargs = {**default_kwargs, **self.optimizer_kwargs}
-            optimizer = MIPROv2(**merged_kwargs)
-        else:
-            # Get optimizer class from Teleprompter subclasses
-            teleprompter_classes = self._get_teleprompter_subclasses()
-            if self.optimizer_type not in teleprompter_classes:
-                valid_optimizers = sorted(teleprompter_classes.keys())
-                raise ValueError(
-                    f"Unknown optimizer_type: {self.optimizer_type}. "
-                    f"Valid options: {valid_optimizers}"
-                )
+        if self.custom_optimizer is not None and self.verbose:
+            print(f"Using custom optimizer: {type(optimizer).__name__}")
 
-            optimizer_class = teleprompter_classes[self.optimizer_type]
-            # Use default kwargs (just metric) and merge with user-provided kwargs
-            default_kwargs = {"metric": metric}
-            # For BootstrapFewShot with small datasets, limit bootstrapped demos to avoid bugs
-            if self.optimizer_type == "bootstrapfewshot" and len(self.examples) < 5:
-                default_kwargs["max_bootstrapped_demos"] = min(2, len(self.examples) - 1)
-            merged_kwargs = {**default_kwargs, **self.optimizer_kwargs}
-            optimizer = optimizer_class(**merged_kwargs)
-
-        # Evaluate baseline (original prompts and descriptions) on validation set
+        # Evaluate baseline
         if self.verbose:
             print("\nEvaluating baseline configuration...")
-
-        baseline_scores = []
-        for val_ex in val_examples:
-            # Convert DSPy example to our Example object
-            example_obj = self._dspy_example_to_example(val_ex)
-            # Use original prompts and descriptions (no optimization)
-            baseline_score = evaluate_fn(
-                example_obj,
-                self.field_descriptions,
-                self.system_prompt,
-                self.instruction_prompt,
-            )
-            baseline_scores.append(baseline_score)
-
-        baseline_avg = (
-            sum(baseline_scores) / len(baseline_scores) if baseline_scores else 0.0
-        )
-        if self.verbose:
-            print(f"Baseline average score: {baseline_avg:.2%}")
+        baseline_avg = self._evaluate_baseline(val_examples, evaluate_fn)
 
         # Optimize
         if self.verbose:
@@ -1007,61 +1004,12 @@ class PydanticOptimizer:
             if self.field_descriptions:
                 print(f"  - {len(self.field_descriptions)} field descriptions")
 
-        # Some optimizers support valset, others don't
-        # Try to use valset if supported, fall back to trainset only if not
-        optimizers_with_valset = (
-            "miprov2zeroshot",
-            "miprov2",
-            "gepa",
-            "bootstrapfewshotwithrandomsearch",
-            "copro",
-            "simba",
-            "custom",  # Custom optimizers might support valset
-        )
+        optimized_program = self._compile_optimizer(optimizer, program, train_examples, val_examples)
 
-        if self.optimizer_type in optimizers_with_valset:
-            try:
-                optimized_program = optimizer.compile(
-                    program,
-                    trainset=train_examples,
-                    valset=val_examples,
-                )
-            except TypeError:
-                # If valset is not supported, fall back to trainset only
-                if self.verbose:
-                    print("Warning: Optimizer doesn't support valset, using trainset only")
-                optimized_program = optimizer.compile(
-                    program,
-                    trainset=train_examples,
-                )
-        else:
-            optimized_program = optimizer.compile(
-                program,
-                trainset=train_examples,
-            )
-
-        # Build arguments for optimized program (field descriptions, types, and prompts)
-        program_args: dict[str, Any] = {}
-        program_args.update(self.field_descriptions)
-        # Add field types with field_type_ prefix
-        for field_path, field_type in self.field_types.items():
-            program_args[f"field_type_{field_path}"] = field_type
-        if self.system_prompt is not None:
-            program_args["system_prompt"] = self.system_prompt
-        if self.instruction_prompt is not None:
-            program_args["instruction_prompt"] = self.instruction_prompt
-
-        # Test the optimized program to get optimized values
+        # Get optimized descriptions
+        program_args = self._get_program_args()
         test_result = optimized_program(**program_args)
-
-        # Extract optimized field descriptions
-        optimized_field_descriptions: dict[str, str] = {}
-        for field_path in self.field_descriptions.keys():
-            attr_name = f"optimized_{field_path}"
-            if hasattr(test_result, attr_name):
-                optimized_field_descriptions[field_path] = getattr(
-                    test_result, attr_name
-                )
+        optimized_field_descriptions = self._extract_optimized_descriptions(test_result)
 
         # Extract optimized prompts
         optimized_system_prompt: str | None = None
@@ -1075,74 +1023,13 @@ class PydanticOptimizer:
                     test_result, "optimized_instruction_prompt"
                 )
 
-        # Evaluate optimized config on validation set
+        # Evaluate optimized config
         if self.verbose:
             print("\nEvaluating optimized configuration...")
+        avg_score = self._evaluate_optimized(val_examples, optimized_program, evaluate_fn)
 
-        evaluation_scores = []
-        for val_ex in val_examples:
-            # Get optimized descriptions and prompts for this example
-            val_program_args: dict[str, Any] = {}
-            for field_path in self.field_descriptions.keys():
-                if hasattr(val_ex, field_path):
-                    val_program_args[field_path] = getattr(val_ex, field_path)
-                else:
-                    val_program_args[field_path] = self.field_descriptions[field_path]
-
-            # Add field types
-            for field_path in self.field_types.keys():
-                field_type_key = f"field_type_{field_path}"
-                if hasattr(val_ex, field_type_key):
-                    val_program_args[field_type_key] = getattr(val_ex, field_type_key)
-                else:
-                    val_program_args[field_type_key] = self.field_types[field_path]
-
-            if self.system_prompt is not None:
-                val_program_args["system_prompt"] = self.system_prompt
-            if self.instruction_prompt is not None:
-                val_program_args["instruction_prompt"] = self.instruction_prompt
-
-            prediction = optimized_program(**val_program_args)
-
-            # Extract optimized descriptions and prompts from prediction
-            pred_descriptions: dict[str, str] = {}
-            pred_system_prompt: str | None = None
-            pred_instruction_prompt: str | None = None
-
-            for field_path in self.field_descriptions.keys():
-                attr_name = f"optimized_{field_path}"
-                if hasattr(prediction, attr_name):
-                    pred_descriptions[field_path] = getattr(prediction, attr_name)
-
-            if self.system_prompt is not None:
-                if hasattr(prediction, "optimized_system_prompt"):
-                    pred_system_prompt = getattr(prediction, "optimized_system_prompt")
-
-            if self.instruction_prompt is not None:
-                if hasattr(prediction, "optimized_instruction_prompt"):
-                    pred_instruction_prompt = getattr(
-                        prediction, "optimized_instruction_prompt"
-                    )
-
-            # Convert DSPy example to our Example object
-            example_obj = self._dspy_example_to_example(val_ex)
-            score = evaluate_fn(
-                example_obj,
-                pred_descriptions,
-                pred_system_prompt,
-                pred_instruction_prompt,
-            )
-            evaluation_scores.append(score)
-
-        avg_score = (
-            sum(evaluation_scores) / len(evaluation_scores) if evaluation_scores else 0.0
-        )
-
-        # Compare with baseline
-        improvement = avg_score - baseline_avg
-        improvement_pct = (
-            (improvement / baseline_avg * 100) if baseline_avg > 0 else 0.0
-        )
+        # Calculate improvement
+        improvement, improvement_pct = self._calculate_improvement(baseline_avg, avg_score)
 
         # Only use optimized prompts/descriptions if they improve performance
         if improvement < 0:
@@ -1175,22 +1062,7 @@ class PydanticOptimizer:
             optimized_score=avg_score,
         )
 
-        if self.verbose:
-            print(f"\n{'='*60}")
-            print("Optimization complete")
-            print(f"{'='*60}")
-            print(f"Baseline score: {baseline_avg:.2%}")
-            print(f"Final score: {avg_score:.2%}")
-            if improvement > 0:
-                print(f"Improvement: {improvement:+.2%} ({improvement_pct:+.1f}%)")
-            elif improvement < 0:
-                print(
-                    f"⚠️  Optimization decreased performance by {abs(improvement):.2%}"
-                )
-                print("Using original field descriptions instead.")
-            else:
-                print("No change in performance.")
-            print(f"{'='*60}\n")
+        self._print_optimization_summary(baseline_avg, avg_score, improvement, improvement_pct)
 
         # Close HITL window if it exists (optimization complete)
         self._close_hitl_window()
