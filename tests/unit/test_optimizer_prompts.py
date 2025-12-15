@@ -6,7 +6,7 @@ import dspy
 from pydantic import BaseModel, Field
 
 from dspydantic import Example, OptimizationResult, PydanticOptimizer
-from dspydantic.module import PydanticOptimizerModule
+from dspydantic.modules import PydanticOptimizerModule
 
 
 class SimpleUser(BaseModel):

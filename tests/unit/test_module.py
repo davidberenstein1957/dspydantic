@@ -1,13 +1,13 @@
 """Tests for module.py."""
 
-from dspydantic.module import PydanticOptimizerModule
+from dspydantic.modules import PydanticOptimizerModule
 
 
 def test_pydantic_optimizer_module_initialization() -> None:
     """Test initializing PydanticOptimizerModule."""
     field_descriptions = {"name": "User name", "age": "User age"}
     module = PydanticOptimizerModule(field_descriptions=field_descriptions)
-    
+
     assert module.field_descriptions == field_descriptions
     assert len(module.field_optimizers) == 2
     assert "name" in module.field_optimizers
@@ -24,7 +24,7 @@ def test_pydantic_optimizer_module_with_prompts() -> None:
         has_system_prompt=True,
         has_instruction_prompt=True,
     )
-    
+
     assert module.has_system_prompt
     assert module.has_instruction_prompt
     assert hasattr(module, "system_prompt_optimizer")

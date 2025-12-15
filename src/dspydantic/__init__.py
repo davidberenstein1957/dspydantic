@@ -1,11 +1,11 @@
 """dspydantic - Optimize Pydantic model field descriptions using DSPy."""
 
-from dspydantic.extractor import (
+from dspydantic.extractors import (
     apply_optimized_descriptions,
     create_optimized_model,
     extract_field_descriptions,
 )
-from dspydantic.optimizer import PydanticOptimizer
+from dspydantic.optimizers import PydanticOptimizer
 from dspydantic.types import Example, OptimizationResult
 from dspydantic.utils import (
     image_to_base64,
@@ -26,3 +26,21 @@ __all__ = [
     "pdf_to_base64_images",
 ]
 
+# Optional GLiNER2 imports - only available if gliner2 is installed
+try:
+    from dspydantic.extractors import (
+        apply_optimized_gliner_descriptions,
+        extract_gliner_descriptions,
+    )
+    from dspydantic.optimizers import GLiNER2SchemaOptimizer
+
+    __all__.extend(
+        [
+            "GLiNER2SchemaOptimizer",
+            "extract_gliner_descriptions",
+            "apply_optimized_gliner_descriptions",
+        ]
+    )
+except ImportError:
+    # GLiNER2 not available - users can install with: pip install dspydantic[gliner]
+    pass

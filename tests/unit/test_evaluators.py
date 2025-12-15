@@ -6,7 +6,7 @@ import dspy
 import pytest
 from pydantic import BaseModel, Field
 
-from dspydantic.evaluators import default_evaluate_fn, default_judge_fn
+from dspydantic.evaluators.dspy import default_evaluate_fn, default_judge_fn
 from dspydantic.types import Example
 
 
@@ -60,7 +60,7 @@ def test_field_by_field_comparison_exact_match(mock_lm: dspy.LM) -> None:
     )
 
     # Mock the extraction to return the same data
-    with patch("dspydantic.evaluators.dspy.ChainOfThought") as mock_chain_class:
+    with patch("dspydantic.evaluators.dspy.dspy.ChainOfThought") as mock_chain_class:
         mock_instance = MagicMock()
         mock_result = MagicMock()
         mock_result.json_output = '{"name": "John Doe", "age": 30, "address": {"street": "123 Main St", "city": "NYC", "zip_code": "10001"}}'
@@ -98,7 +98,7 @@ def test_field_by_field_comparison_partial_match(mock_lm: dspy.LM) -> None:
     )
 
     # Mock extraction with one field wrong
-    with patch("dspydantic.evaluators.dspy.ChainOfThought") as mock_chain_class:
+    with patch("dspydantic.evaluators.dspy.dspy.ChainOfThought") as mock_chain_class:
         mock_instance = MagicMock()
         mock_result = MagicMock()
         mock_result.json_output = '{"name": "John Doe", "age": 30, "address": {"street": "123 Main St", "city": "LA", "zip_code": "10001"}}'
@@ -131,7 +131,7 @@ def test_field_by_field_comparison_simple_model(mock_lm: dspy.LM) -> None:
         metric="exact",
     )
 
-    with patch("dspydantic.evaluators.dspy.ChainOfThought") as mock_chain_class:
+    with patch("dspydantic.evaluators.dspy.dspy.ChainOfThought") as mock_chain_class:
         mock_instance = MagicMock()
         mock_result = MagicMock()
         mock_result.json_output = '{"name": "John Doe", "age": 30}'
@@ -163,7 +163,7 @@ def test_field_by_field_comparison_missing_field(mock_lm: dspy.LM) -> None:
         metric="exact",
     )
 
-    with patch("dspydantic.evaluators.dspy.ChainOfThought") as mock_chain_class:
+    with patch("dspydantic.evaluators.dspy.dspy.ChainOfThought") as mock_chain_class:
         # Missing age field
         mock_instance = MagicMock()
         mock_result = MagicMock()
@@ -197,7 +197,7 @@ def test_field_by_field_comparison_levenshtein_metric(mock_lm: dspy.LM) -> None:
         metric="levenshtein",
     )
 
-    with patch("dspydantic.evaluators.dspy.ChainOfThought") as mock_chain_class:
+    with patch("dspydantic.evaluators.dspy.dspy.ChainOfThought") as mock_chain_class:
         # Slightly different name
         mock_instance = MagicMock()
         mock_result = MagicMock()
@@ -235,7 +235,7 @@ def test_field_by_field_comparison_nested_structure(mock_lm: dspy.LM) -> None:
         metric="levenshtein",
     )
 
-    with patch("dspydantic.evaluators.dspy.ChainOfThought") as mock_chain_class:
+    with patch("dspydantic.evaluators.dspy.dspy.ChainOfThought") as mock_chain_class:
         # One nested field different
         mock_instance = MagicMock()
         mock_result = MagicMock()
@@ -278,7 +278,7 @@ def test_field_by_field_comparison_list_fields(mock_lm: dspy.LM) -> None:
         metric="levenshtein",
     )
 
-    with patch("dspydantic.evaluators.dspy.ChainOfThought") as mock_chain_class:
+    with patch("dspydantic.evaluators.dspy.dspy.ChainOfThought") as mock_chain_class:
         mock_instance = MagicMock()
         mock_result = MagicMock()
         mock_result.json_output = '{"name": "John Doe", "tags": ["python", "testing"]}'
@@ -318,7 +318,7 @@ def test_field_by_field_comparison_list_fields_different(mock_lm: dspy.LM) -> No
         metric="levenshtein",
     )
 
-    with patch("dspydantic.evaluators.dspy.ChainOfThought") as mock_chain_class:
+    with patch("dspydantic.evaluators.dspy.dspy.ChainOfThought") as mock_chain_class:
         # Different tags
         mock_instance = MagicMock()
         mock_result = MagicMock()
@@ -345,7 +345,7 @@ def test_default_judge_fn_signature(mock_lm: dspy.LM) -> None:
     )
 
     # Mock the judge response
-    with patch("dspydantic.evaluators.dspy.ChainOfThought") as mock_chain_class:
+    with patch("dspydantic.evaluators.dspy.dspy.ChainOfThought") as mock_chain_class:
         mock_instance = MagicMock()
         mock_result = MagicMock()
         mock_result.evaluation = '{"score": 0.85, "reasoning": "Good extraction"}'
@@ -380,7 +380,7 @@ def test_field_by_field_comparison_all_fields_missing(mock_lm: dspy.LM) -> None:
         metric="exact",
     )
 
-    with patch("dspydantic.evaluators.dspy.ChainOfThought") as mock_chain_class:
+    with patch("dspydantic.evaluators.dspy.dspy.ChainOfThought") as mock_chain_class:
         # Empty extraction
         mock_instance = MagicMock()
         mock_result = MagicMock()
@@ -414,7 +414,7 @@ def test_field_by_field_comparison_extra_fields(mock_lm: dspy.LM) -> None:
         metric="exact",
     )
 
-    with patch("dspydantic.evaluators.dspy.ChainOfThought") as mock_chain_class:
+    with patch("dspydantic.evaluators.dspy.dspy.ChainOfThought") as mock_chain_class:
         # Extra field present
         mock_instance = MagicMock()
         mock_result = MagicMock()
@@ -453,7 +453,7 @@ def test_multi_image_signature_single_image(mock_lm: dspy.LM) -> None:
 
     with (
         patch("dspydantic.evaluators.dspy.ChainOfThought") as mock_chain_class,
-        patch("dspydantic.evaluators.convert_images_to_dspy_images") as mock_convert,
+        patch("dspydantic.evaluators.dspy.convert_images_to_dspy_images") as mock_convert,
     ):
         mock_image = MagicMock()
         mock_convert.return_value = [mock_image]
@@ -508,7 +508,7 @@ def test_multi_image_signature_multiple_images(mock_lm: dspy.LM) -> None:
 
     with (
         patch("dspydantic.evaluators.dspy.ChainOfThought") as mock_chain_class,
-        patch("dspydantic.evaluators.convert_images_to_dspy_images") as mock_convert,
+        patch("dspydantic.evaluators.dspy.convert_images_to_dspy_images") as mock_convert,
     ):
         mock_image1 = MagicMock()
         mock_image2 = MagicMock()

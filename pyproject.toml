@@ -34,6 +34,9 @@ dev = [
     "ruff>=0.1.0",
     "datasets",
 ]
+gliner = [
+    "gliner2>=1.0.0",
+]
 
 [build-system]
 requires = ["hatchling"]

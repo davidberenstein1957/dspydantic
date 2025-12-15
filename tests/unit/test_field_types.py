@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel
 
-from dspydantic.extractor import extract_field_types
+from dspydantic.extractors import extract_field_types
 
 
 class Address(BaseModel):

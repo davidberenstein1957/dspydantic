@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, Field
 
-from dspydantic.extractor import (
+from dspydantic.extractors import (
     apply_optimized_descriptions,
     create_optimized_model,
     extract_field_descriptions,

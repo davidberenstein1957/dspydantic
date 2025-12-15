@@ -1,132 +1,96 @@
-"""IMDB text classification example using stanfordnlp/imdb dataset.
+"""Text classification example - Sentiment analysis.
 
-This example demonstrates how to optimize a Pydantic model for sentiment classification
-on the IMDB movie review dataset from HuggingFace. It showcases template functionality
-by using instruction prompt templates with placeholders that are filled from example
-text dictionaries.
+This example demonstrates how to optimize a Pydantic model for sentiment classification,
+based on GLiNER2's text classification tutorial example.
+It classifies product reviews as positive, negative, or neutral.
 """
 
-import random
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from dspydantic import Example, PydanticOptimizer
 
 
 class SentimentClassification(BaseModel):
-    """Sentiment classification model for movie reviews."""
+    """Sentiment classification model for product reviews."""
 
-    sentiment: Literal["positive", "negative"]
-
-
-def load_imdb_examples(num_examples: int = 10) -> list[Example]:
-    """Load examples from the IMDB dataset.
-
-    Ensures at least one example for each sentiment label (positive and negative).
-
-    Args:
-        num_examples: Number of examples to load (default: 10).
-
-    Returns:
-        List of Example objects with text and expected sentiment.
-    """
-    try:
-        from datasets import load_dataset
-    except ImportError:
-        raise ImportError(
-            "datasets library is required. Install it with: uv pip install datasets"
-        )
-
-    # Load the IMDB dataset
-    dataset = load_dataset("stanfordnlp/imdb", split="train")
-    dataset_size = len(dataset)
-
-    # Find indices for each label
-    positive_indices: list[int] = []
-    negative_indices: list[int] = []
-
-    for idx in range(dataset_size):
-        if dataset[idx]["label"] == 1:
-            positive_indices.append(idx)
-        else:
-            negative_indices.append(idx)
-
-    # Ensure at least one example for each label
-    selected_indices: set[int] = set()
-    if positive_indices:
-        selected_indices.add(random.choice(positive_indices))
-    if negative_indices:
-        selected_indices.add(random.choice(negative_indices))
-
-    # Fill remaining slots randomly
-    remaining_needed = num_examples - len(selected_indices)
-    if remaining_needed > 0:
-        available_indices = set(range(dataset_size)) - selected_indices
-        if available_indices:
-            additional_indices = random.sample(
-                list(available_indices), min(remaining_needed, len(available_indices))
-            )
-            selected_indices.update(additional_indices)
-
-    # Convert to list and limit to num_examples
-    selected_indices_list = list(selected_indices)[:num_examples]
-    random.shuffle(selected_indices_list)
-
-    # Build examples with template text dict
-    examples = []
-    for idx in selected_indices_list:
-        item = dataset[idx]
-        # Convert label (0=negative, 1=positive) to string
-        sentiment = "positive" if item["label"] == 1 else "negative"
-        review_text = item["text"]
-        review_length = len(review_text.split())
-
-        # Use text as dict for template formatting
-        # The "review" key will be automatically extracted for input_data
-        example = Example(
-            text={
-                "review": review_text,
-                "review_length": str(review_length),
-            },
-            expected_output={"sentiment": sentiment},
-        )
-        examples.append(example)
-
-    return examples
+    sentiment: Literal["positive", "negative", "neutral"] = Field(
+        description="The sentiment of the review"
+    )
 
 
 def main():
-    """Run the IMDB text classification optimization example."""
-    print("Loading IMDB dataset examples...")
-    examples = load_imdb_examples(num_examples=10)
+    """Run the sentiment classification optimization example."""
+    print("=" * 60)
+    print("Text Classification Example - Sentiment Analysis")
+    print("=" * 60)
+    print("\nThis example classifies product reviews as positive, negative, or neutral.")
+    print("Based on GLiNER2's text classification tutorial.\n")
 
-    print(f"Loaded {len(examples)} examples")
+    # Create examples based on GLiNER2 tutorial
+    examples = [
+        Example(
+            text="This laptop has amazing performance but terrible battery life!",
+            expected_output={"sentiment": "negative"},
+        ),
+        Example(
+            text="Absolutely love this product! It exceeded all my expectations.",
+            expected_output={"sentiment": "positive"},
+        ),
+        Example(
+            text="The product arrived on time and works as described.",
+            expected_output={"sentiment": "neutral"},
+        ),
+        Example(
+            text="Great features, but the price is way too high for what you get.",
+            expected_output={"sentiment": "negative"},
+        ),
+        Example(
+            text="Outstanding quality and excellent customer service. Highly recommend!",
+            expected_output={"sentiment": "positive"},
+        ),
+        Example(
+            text="It's okay, nothing special. Does the job but nothing more.",
+            expected_output={"sentiment": "neutral"},
+        ),
+        Example(
+            text="Worst purchase I've ever made. Complete waste of money.",
+            expected_output={"sentiment": "negative"},
+        ),
+        Example(
+            text="Perfect! Exactly what I was looking for. Worth every penny.",
+            expected_output={"sentiment": "positive"},
+        ),
+    ]
+
+    print(f"Created {len(examples)} examples")
     print("\nSample examples:")
     for i, example in enumerate(examples[:3], 1):
         print(f"\nExample {i}:")
-        text_dict = example.text_dict
-        review_preview = text_dict.get("review", "")[:100] if text_dict else ""
-        print(f"  Review preview: {review_preview}...")
-        review_len = text_dict.get("review_length", "N/A")
-        print(f"  Review length: {review_len} words")
+        text_preview = example.input_data.get("text", "")
+        print(f"  Review: {text_preview}")
         print(f"  Expected sentiment: {example.expected_output['sentiment']}")
 
     # Create optimizer with system and instruction prompts
     optimizer = PydanticOptimizer(
         model=SentimentClassification,
         examples=examples,
-        model_id="gpt-4o-mini",  # Will use OPENAI_API_KEY from environment
+        model_id="gpt-4o-mini",
         verbose=True,
-        optimizer="bootstrapfewshot",
+        optimizer="miprov2zeroshot",
         system_prompt=(
-            "You are an expert sentiment analysis assistant specializing in movie review "
+            "You are an expert sentiment analysis assistant specializing in product review "
             "classification. You understand nuanced language, sarcasm, and contextual cues "
-            "that indicate positive or negative sentiment in written reviews. You can "
-            "accurately distinguish between genuine praise and criticism even when reviews "
-            "contain mixed signals."
+            "that indicate positive, negative, or neutral sentiment in written reviews. "
+            "You can accurately distinguish between genuine praise and criticism even when "
+            "reviews contain mixed signals."
         ),
-        instruction_prompt="A review of a movie: {review}",
+        instruction_prompt=(
+            "Classify the sentiment of the following product review as either 'positive', "
+            "'negative', or 'neutral'. Consider the overall tone, language used, and the "
+            "reviewer's opinion when making your classification."
+        ),
     )
 
     # Optimize
@@ -153,4 +117,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
