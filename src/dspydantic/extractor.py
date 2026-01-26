@@ -8,6 +8,14 @@ from pydantic import BaseModel, Field, create_model
 from pydantic.fields import FieldInfo
 
 
+def _resolve_ref(ref: str, defs: dict[str, Any]) -> dict[str, Any] | None:
+    """Resolve a $ref reference."""
+    if ref.startswith("#/$defs/"):
+        ref_name = ref.replace("#/$defs/", "")
+        return defs.get(ref_name)
+    return None
+
+
 def extract_field_descriptions(
     model: type[BaseModel], prefix: str = ""
 ) -> dict[str, str]:
@@ -39,13 +47,6 @@ def extract_field_descriptions(
     schema = model.model_json_schema()
     defs = schema.get("$defs", {})
 
-    def resolve_ref(ref: str, defs: dict[str, Any]) -> dict[str, Any] | None:
-        """Resolve a $ref reference."""
-        if ref.startswith("#/$defs/"):
-            ref_name = ref.replace("#/$defs/", "")
-            return defs.get(ref_name)
-        return None
-
     def extract_from_schema(
         schema_dict: dict[str, Any],
         current_prefix: str = "",
@@ -62,7 +63,7 @@ def extract_field_descriptions(
 
             # Handle $ref references (Pydantic v2 nested models)
             if "$ref" in field_schema:
-                ref_schema = resolve_ref(field_schema["$ref"], defs_dict)
+                ref_schema = _resolve_ref(field_schema["$ref"], defs_dict)
                 if ref_schema:
                     # Extract description from the field itself if present, otherwise use field name
                     if "description" in field_schema:
@@ -89,7 +90,7 @@ def extract_field_descriptions(
                 if isinstance(items_schema, dict):
                     # Handle $ref in items
                     if "$ref" in items_schema:
-                        ref_schema = resolve_ref(items_schema["$ref"], defs_dict)
+                        ref_schema = _resolve_ref(items_schema["$ref"], defs_dict)
                         if ref_schema:
                             extract_from_schema(ref_schema, field_path, defs_dict)
                     elif "properties" in items_schema:
@@ -254,13 +255,6 @@ def apply_optimized_descriptions(
     """
     schema = model.model_json_schema()
 
-    def resolve_ref(ref: str, defs: dict[str, Any]) -> dict[str, Any] | None:
-        """Resolve a $ref reference."""
-        if ref.startswith("#/$defs/"):
-            ref_name = ref.replace("#/$defs/", "")
-            return defs.get(ref_name)
-        return None
-
     def update_descriptions(
         schema_dict: dict[str, Any],
         current_prefix: str = "",
@@ -277,7 +271,7 @@ def apply_optimized_descriptions(
 
             # Handle $ref references (Pydantic v2 nested models)
             if "$ref" in field_schema:
-                ref_schema = resolve_ref(field_schema["$ref"], defs_dict)
+                ref_schema = _resolve_ref(field_schema["$ref"], defs_dict)
                 if ref_schema:
                     # Update description from the field itself if present
                     if field_path in optimized_descriptions:
@@ -301,7 +295,7 @@ def apply_optimized_descriptions(
                 if isinstance(items_schema, dict):
                     # Handle $ref in items
                     if "$ref" in items_schema:
-                        ref_schema = resolve_ref(items_schema["$ref"], defs_dict)
+                        ref_schema = _resolve_ref(items_schema["$ref"], defs_dict)
                         if ref_schema:
                             update_descriptions(ref_schema, field_path, defs_dict)
                     elif "properties" in items_schema:

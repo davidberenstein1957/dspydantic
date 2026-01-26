@@ -1,22 +1,15 @@
 """Utility functions for handling different input types."""
 
 import base64
+import io
 import re
 import warnings
 from pathlib import Path
 from typing import Any
 
-try:
-    import dspy
-except ImportError:
-    dspy = None
-
-try:
-    from pdf2image import convert_from_path
-    from PIL import Image
-except ImportError:
-    convert_from_path = None  # type: ignore[assignment]
-    Image = None  # type: ignore[assignment]
+import dspy
+from pdf2image import convert_from_path
+from PIL import Image
 
 
 def pdf_to_base64_images(
@@ -32,20 +25,8 @@ def pdf_to_base64_images(
         List of base64-encoded image strings.
 
     Raises:
-        ImportError: If pdf2image or Pillow are not installed.
         FileNotFoundError: If the PDF file doesn't exist.
     """
-    if convert_from_path is None:
-        raise ImportError(
-            "pdf2image is required for PDF processing. "
-            "Install it with: uv pip install pdf2image pillow"
-        )
-    if Image is None:
-        raise ImportError(
-            "Pillow is required for image processing. "
-            "Install it with: uv pip install pillow"
-        )
-
     pdf_path = Path(pdf_path)
     if not pdf_path.exists():
         raise FileNotFoundError(f"PDF file not found: {pdf_path}")
@@ -57,8 +38,6 @@ def pdf_to_base64_images(
     base64_images = []
     for image in images:
         # Convert PIL Image to base64
-        import io
-
         buffer = io.BytesIO()
         image.save(buffer, format="PNG")
         image_bytes = buffer.getvalue()
@@ -78,23 +57,14 @@ def image_to_base64(image_path: str | Path) -> str:
         Base64-encoded image string.
 
     Raises:
-        ImportError: If Pillow is not installed.
         FileNotFoundError: If the image file doesn't exist.
     """
-    if Image is None:
-        raise ImportError(
-            "Pillow is required for image processing. "
-            "Install it with: uv pip install pillow"
-        )
-
     image_path = Path(image_path)
     if not image_path.exists():
         raise FileNotFoundError(f"Image file not found: {image_path}")
 
     # Open and convert image to base64
     with Image.open(image_path) as img:
-        import io
-
         buffer = io.BytesIO()
         # Convert to RGB if necessary (for PNG with transparency, etc.)
         if img.mode in ("RGBA", "LA", "P"):
@@ -199,15 +169,7 @@ def base64_to_dspy_image(base64_str: str) -> Any:
 
     Returns:
         dspy.Image object.
-
-    Raises:
-        ImportError: If dspy is not installed.
     """
-    if dspy is None:
-        raise ImportError(
-            "dspy is required for image handling. Install it with: uv pip install dspy-ai"
-        )
-
     # Create a data URL from base64 string
     # DSPy's Image.from_url can handle data URLs
     data_url = f"data:image/png;base64,{base64_str}"
@@ -224,9 +186,6 @@ def convert_images_to_dspy_images(images: list[str] | None) -> list[Any] | None:
 
     Returns:
         List of dspy.Image objects, or None if input is None.
-
-    Raises:
-        ImportError: If dspy is not installed.
     """
     if images is None:
         return None
@@ -278,21 +237,6 @@ def build_image_signature_and_kwargs(
     kwargs = {"prompt": None, "images": dspy_images}  # prompt will be set later
 
     return signature, kwargs
-
-
-def has_template_placeholders(text: str) -> bool:
-    """Check if a string contains template placeholders.
-
-    Args:
-        text: String to check for placeholders.
-
-    Returns:
-        True if the string contains placeholders like {key}, False otherwise.
-    """
-    if not text:
-        return False
-    placeholder_pattern = r"\{([^}]+)\}"
-    return bool(re.search(placeholder_pattern, text))
 
 
 def format_instruction_prompt_template(

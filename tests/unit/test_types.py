@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, Field
 
-from dspydantic.types import Example, OptimizationResult
+from dspydantic.types import Example, OptimizationResult, create_output_model
 
 
 class User(BaseModel):
@@ -48,4 +48,28 @@ def test_optimization_result_creation() -> None:
     assert result.baseline_score == 0.75
     assert result.optimized_score == 0.85
     assert result.metrics["average_score"] == 0.85
+
+
+def test_example_with_string_output() -> None:
+    """Test creating an Example with string expected_output."""
+    example = Example(
+        text="Good response",
+        expected_output="excellent",
+    )
+    assert isinstance(example.expected_output, str)
+    assert example.expected_output == "excellent"
+
+
+def test_create_output_model() -> None:
+    """Test create_output_model helper function."""
+    OutputModel = create_output_model()
+    assert issubclass(OutputModel, BaseModel)
+    
+    instance = OutputModel(output="test value")
+    assert instance.output == "test value"
+    
+    # Test schema
+    schema = OutputModel.model_json_schema()
+    assert "output" in schema["properties"]
+    assert schema["properties"]["output"]["type"] == "string"
 

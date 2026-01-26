@@ -9,6 +9,16 @@ import dspy
 from deepdiff import DeepDiff
 from pydantic import BaseModel
 
+# Import evaluators package to trigger registration
+import dspydantic.evaluators  # noqa: F401
+from dspydantic.evaluators import (
+    LevenshteinEvaluator,
+    StringCheckEvaluator,
+)
+from dspydantic.evaluators.config import (
+    BaseEvaluator,
+    EvaluatorFactory,
+)
 from dspydantic.extractor import apply_optimized_descriptions, extract_field_descriptions
 from dspydantic.types import Example
 from dspydantic.utils import (
@@ -144,6 +154,7 @@ def default_evaluate_fn(
     judge_lm: dspy.LM | None = None,
     custom_judge_fn: Callable[..., float] | None = None,
     exclude_fields: list[str] | None = None,
+    evaluator_config: dict[str, Any] | None = None,
 ) -> Callable[[Example, dict[str, str], str | None, str | None], float]:
     """Create a default evaluation function that uses the LLM for structured extraction.
 
@@ -162,6 +173,8 @@ def default_evaluate_fn(
         exclude_fields: Optional list of field paths to exclude from evaluation.
             Field paths use dot notation for nested fields (e.g., ["address.street", "metadata"]).
             Fields matching these paths (or starting with them) will be excluded from scoring.
+        evaluator_config: Optional evaluator configuration dict with "default" and "field_overrides".
+            If provided, uses configured evaluators instead of metric parameter.
 
     Returns:
         An evaluation function that performs structured extraction and compares
@@ -209,11 +222,7 @@ def default_evaluate_fn(
             images = input_data.get("images")
             # Convert base64 images to dspy.Image objects if present
             if images:
-                try:
-                    dspy_images = convert_images_to_dspy_images(images)
-                except ImportError:
-                    # If dspy is not available, fall back to base64 strings
-                    dspy_images = None
+                dspy_images = convert_images_to_dspy_images(images)
             # If no text but images exist, create a placeholder text
             if not input_text and images:
                 input_text = "Extract structured data from the provided image(s)."
@@ -363,30 +372,35 @@ def default_evaluate_fn(
                 optimized_instruction_prompt,
             )
 
-        # Compare extracted data with expected output (existing logic)
+        # Compare extracted data with expected output
         if isinstance(expected, BaseModel):
             expected = expected.model_dump()
+        elif isinstance(expected, str):
+            # Convert string to dict format matching OutputModel structure
+            expected = {"output": expected}
 
-        # Levenshtein distance function
-        def levenshtein_distance(s1: str, s2: str) -> int:
-            """Calculate Levenshtein distance between two strings."""
-            if len(s1) < len(s2):
-                return levenshtein_distance(s2, s1)
+        # Setup evaluators based on config or metric
+        default_evaluator: BaseEvaluator | None = None
+        field_evaluators: dict[str, BaseEvaluator] = {}
 
-            if len(s2) == 0:
-                return len(s1)
+        if evaluator_config:
+            # Use evaluator config system
+            default_eval_config = evaluator_config.get("default", "exact")
+            default_evaluator = EvaluatorFactory.create(default_eval_config, default_lm=lm)
 
-            previous_row = list(range(len(s2) + 1))
-            for i, c1 in enumerate(s1):
-                current_row = [i + 1]
-                for j, c2 in enumerate(s2):
-                    insertions = previous_row[j + 1] + 1
-                    deletions = current_row[j] + 1
-                    substitutions = previous_row[j] + (c1 != c2)
-                    current_row.append(min(insertions, deletions, substitutions))
-                previous_row = current_row
-
-            return previous_row[-1]
+            # Setup field-specific evaluators
+            field_overrides = evaluator_config.get("field_overrides", {})
+            for field_path, eval_config in field_overrides.items():
+                field_evaluators[field_path] = EvaluatorFactory.create(eval_config, default_lm=lm)
+        else:
+            # Use legacy metric system (backward compatibility)
+            if metric == "exact":
+                default_evaluator = StringCheckEvaluator(config={})
+            elif metric == "levenshtein":
+                default_evaluator = LevenshteinEvaluator(config={})
+            else:
+                # Fallback to exact
+                default_evaluator = StringCheckEvaluator(config={})
 
         # Helper function to get value from nested dict using dot notation path
         def get_nested_value(data: dict[str, Any], path: str) -> Any:
@@ -400,11 +414,14 @@ def default_evaluate_fn(
                     return None
             return value
 
-        # Comparison function that handles nested structures using DeepDiff
-        def compare_values(extracted: Any, expected: Any) -> float:
-            """Compare extracted value with expected value.
+        # Comparison function using evaluators
+        def compare_values(
+            extracted: Any, expected: Any, field_path: str | None = None
+        ) -> float:
+            """Compare extracted value with expected value using evaluator.
 
-            Handles nested structures including dictionaries and lists using DeepDiff.
+            Handles nested structures including dictionaries and lists using DeepDiff
+            for complex structures, evaluators for primitives.
             """
             # Check if we have nested structures (dict or list)
             has_nested_structures = isinstance(expected, (dict, list)) or isinstance(
@@ -426,35 +443,29 @@ def default_evaluate_fn(
 
                 deep_distance = diff.get("deep_distance", 1.0)
 
-                # For exact metric, return binary result (1.0 if identical, 0.0 otherwise)
-                if metric == "exact":
+                # For exact evaluator, return binary result
+                if isinstance(default_evaluator, StringCheckEvaluator):
                     return 1.0 if deep_distance == 0.0 else 0.0
 
-                # For levenshtein metric, use deep_distance as similarity score
-                # DeepDiff's deep_distance is between 0 (identical) and 1 (very different)
-                # Convert to similarity score: 1 - distance
+                # For other evaluators, use deep_distance as similarity score
                 similarity = 1.0 - deep_distance
                 return max(0.0, min(1.0, similarity))
 
-            # For primitive types (non-nested), handle based on metric
-            if metric == "exact":
-                # Exact matching for primitives
-                return 1.0 if extracted == expected else 0.0
+            # For primitive types, use evaluator
+            evaluator_to_use = field_evaluators.get(field_path or "") if field_path else None
+            if evaluator_to_use is None:
+                evaluator_to_use = default_evaluator
 
-            # For levenshtein metric with primitives, use Levenshtein distance
-            str_extracted = str(extracted).strip()
-            str_expected = str(expected).strip()
+            if evaluator_to_use:
+                return evaluator_to_use.evaluate(
+                    extracted=extracted,
+                    expected=expected,
+                    input_data=input_data,
+                    field_path=field_path,
+                )
 
-            if str_extracted == str_expected:
-                return 1.0
-
-            max_len = max(len(str_extracted), len(str_expected))
-            if max_len == 0:
-                return 1.0
-
-            distance = levenshtein_distance(str_extracted, str_expected)
-            similarity = 1.0 - (distance / max_len)
-            return max(0.0, similarity)
+            # Fallback to exact match
+            return 1.0 if extracted == expected else 0.0
 
         # Get all field paths from the model schema
         all_field_paths = list(extract_field_descriptions(model).keys())
@@ -505,7 +516,7 @@ def default_evaluate_fn(
                     field_scores.append(0.0)
                 else:
                     # Compare the values for this field
-                    field_score = compare_values(extracted_value, expected_value)
+                    field_score = compare_values(extracted_value, expected_value, field_path)
                     field_scores.append(field_score)
 
             # Average all field scores
@@ -517,4 +528,3 @@ def default_evaluate_fn(
         return max(0.0, min(1.0, score))  # Ensure score is between 0.0 and 1.0
 
     return evaluate
-

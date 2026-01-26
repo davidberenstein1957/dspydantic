@@ -100,7 +100,6 @@ Check out the [examples directory](examples/) for complete working examples:
 - **[Veterinary EHR extraction](examples/text_example.py)**: Extract diseases, ICD-11 labels, and anonymized entities from clinical narratives—real-world medical data extraction
 - **[Image classification](examples/image_example.py)**: Classify MNIST handwritten digits using `Literal[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]`—demonstrates vision capabilities and Literal type optimization
 - **[Text classification](examples/imdb_example.py)**: Classify IMDB movie review sentiment with `Literal["positive", "negative"]` and template prompts—shows dynamic prompt formatting with `{review}` placeholders
-- **[Human-in-the-loop](examples/hitl_example.py)**: Interactive evaluation with GUI—get human feedback during optimization
 
 ## Basic Usage
 
@@ -492,7 +491,7 @@ examples = [
 
 #### Built-in Evaluation
 
-Use built-in options: `"exact"`, `"levenshtein"`, `"exact-hitl"`, `"levenshtein-hitl"`:
+Use built-in options: `"exact"` or `"levenshtein"`:
 
 ```python
 from dspydantic import PydanticOptimizer
@@ -578,7 +577,7 @@ Main optimizer class.
 
 - `model` (type[BaseModel]): Pydantic model class to optimize
 - `examples` (list[Example]): Examples for optimization (typically 5-20)
-- `evaluate_fn` (Callable | dspy.LM | str | None): Evaluation function, built-in ("exact", "levenshtein", "exact-hitl", "levenshtein-hitl"), or dspy.LM instance
+- `evaluate_fn` (Callable | dspy.LM | str | None): Evaluation function, built-in ("exact", "levenshtein"), or dspy.LM instance
 - `system_prompt` (str | None): Optional system prompt to optimize
 - `instruction_prompt` (str | None): Optional instruction prompt to optimize (supports `{placeholders}`)
 - `lm` (dspy.LM | None): Optional DSPy LM instance (overrides model_id/api_key)
