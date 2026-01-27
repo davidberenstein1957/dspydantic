@@ -1,7 +1,7 @@
 """Integration tests for PydanticOptimizer with real DSPy setup."""
 
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import dspy
 import pytest
@@ -34,6 +34,11 @@ class User(BaseModel):
 )
 def test_optimizer_with_nested_model_and_prompts() -> None:
     """Integration test: Run optimizer with nested model and prompts."""
+    # Configure DSPy first
+    api_key = os.getenv("OPENAI_API_KEY")
+    lm = dspy.LM("openai/gpt-4.1-mini", api_key=api_key)
+    dspy.configure(lm=lm)
+
     examples = [
         Example(
             text="John Doe, 30 years old, john@example.com, 123 Main St, New York, 10001",
@@ -82,8 +87,7 @@ def test_optimizer_with_nested_model_and_prompts() -> None:
         evaluate_fn=evaluate_fn,
         system_prompt="Extract user information from text",
         instruction_prompt="Parse the following text and extract structured data",
-        model_id="gpt-4o",
-        optimizer_type="miprov2zeroshot",
+        optimizer="miprov2zeroshot",
         num_threads=1,
         verbose=False,
     )

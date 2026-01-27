@@ -1,0 +1,119 @@
+site_name: DSPydantic Documentation
+site_description: Auto-optimize your Pydantic models with DSPy
+site_author: dspydantic contributors
+site_url: https://davidberenstein1957.github.io/dspydantic/
+
+repo_name: davidberenstein1957/dspydantic
+repo_url: https://github.com/davidberenstein1957/dspydantic
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.indexes
+    - navigation.tracking
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.annotate
+    - content.code.copy
+    - content.code.select
+    - content.tabs.link
+    - content.tooltips
+    - toc.follow
+  font:
+    text: Inter
+    code: JetBrains Mono
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: true
+            show_root_toc_entry: true
+            show_root_full_path: false
+            show_object_full_path: false
+            show_category_heading: true
+            show_if_no_docstring: false
+            separate_signature: true
+            merge_init_into_class: true
+            show_submodules: true
+            docstring_options:
+              ignore_init_summary: false
+  - mkdocs-jupyter:
+      execute: false
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - admonition
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+
+nav:
+  - Getting Started:
+    - index.md
+    - core-concepts.md
+  - Guides:
+    - Your First Optimization: guides/optimization/first-optimization.md
+    - Supported Flows:
+      - Optimization Modalities: guides/optimization/modalities.md
+      - With Pydantic Schema: guides/optimization/with-pydantic-schema.md
+      - Without Pydantic Schema: guides/optimization/without-pydantic-schema.md
+      - Prompt Templates: guides/optimization/prompt-templates.md
+    - Evaluators:
+      - Configure Evaluators: guides/evaluators/configure.md
+      - When to Use Which: guides/evaluators/selection.md
+      - Custom Evaluators: guides/evaluators/custom.md
+    - Advanced:
+      - Nested Models: guides/advanced/nested-models.md
+      - Field Exclusion: guides/advanced/field-exclusion.md
+      - Configure Optimizations: guides/advanced/configure-optimizations.md
+      - Configure Models: guides/advanced/configure-models.md
+      - Save and Load: guides/advanced/save-load.md
+  - Reference:
+    - reference/api/prompter.md
+    - reference/api/types.md
+    - reference/api/extractor.md
+    - reference/api/evaluators.md
+    - Changelog: https://github.com/davidberenstein1957/dspydantic/releases
+  - Concepts:
+    - concepts/optimization.md
+    - concepts/evaluators.md
+    - concepts/architecture.md

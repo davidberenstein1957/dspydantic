@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, create_model
 
 from dspydantic.utils import prepare_input_data
 
@@ -17,6 +17,7 @@ class OptimizationResult:
         optimized_descriptions: Dictionary mapping field paths to optimized descriptions.
         optimized_system_prompt: Optimized system prompt (if provided).
         optimized_instruction_prompt: Optimized instruction prompt (if provided).
+        optimized_demos: Few-shot examples (input_data, expected_output) for the extraction prompt.
         metrics: Dictionary containing optimization metrics (score, improvement, etc.).
         baseline_score: Baseline score before optimization.
         optimized_score: Score after optimization.
@@ -28,6 +29,35 @@ class OptimizationResult:
     metrics: dict[str, Any]
     baseline_score: float
     optimized_score: float
+    optimized_demos: list[dict[str, Any]] | None = None
+
+
+@dataclass
+class PrompterState:
+    """State of a Prompter instance for serialization.
+
+    This class contains all the information needed to save and restore a Prompter instance.
+
+    Attributes:
+        model_schema: JSON schema of the Pydantic model.
+        optimized_descriptions: Dictionary of optimized field descriptions.
+        optimized_system_prompt: Optimized system prompt (if any).
+        optimized_instruction_prompt: Optimized instruction prompt (if any).
+        model_id: LLM model identifier.
+        model_config: Model configuration (API base, version, etc.).
+        version: dspydantic version for compatibility checking.
+        metadata: Additional metadata (timestamp, optimization metrics, etc.).
+    """
+
+    model_schema: dict[str, Any]
+    optimized_descriptions: dict[str, str]
+    optimized_system_prompt: str | None
+    optimized_instruction_prompt: str | None
+    model_id: str
+    model_config: dict[str, Any]
+    version: str
+    metadata: dict[str, Any]
+    optimized_demos: list[dict[str, Any]] | None = None
 
 
 class Example:
@@ -90,8 +120,9 @@ class Example:
         text_dict: Dictionary of text values for template formatting. Used to format
             instruction prompt templates with placeholders like "{key}".
             Set automatically when text parameter is a dict.
-        expected_output: Expected output. Can be a dict or Pydantic model matching
+        expected_output: Expected output. Can be a str, dict, or Pydantic model matching
             the target schema.
+            If a string, it will be wrapped in a single-field model with field name "output".
             If a Pydantic model, it will be converted to a dict for comparison.
             If None, evaluation will use an LLM judge or custom evaluation function instead of
             comparing against expected output.
@@ -99,7 +130,7 @@ class Example:
 
     def __init__(
         self,
-        expected_output: dict[str, Any] | BaseModel | None = (None),
+        expected_output: str | dict[str, Any] | BaseModel | None = (None),
         text: str | dict[str, str] | None = None,
         image_path: str | Path | None = None,
         image_base64: str | None = None,
@@ -109,7 +140,8 @@ class Example:
         """Initialize an Example.
 
         Args:
-            expected_output: Expected output. Can be a dict or Pydantic model.
+            expected_output: Expected output. Can be a str, dict, or Pydantic model.
+                If a string, it will be wrapped in a single-field model with field name "output".
                 If None, evaluation will use an LLM judge or custom evaluation function.
             text: Plain text input (str) or dictionary of text values for template
                 formatting (dict). If a dict, keys correspond to placeholders in
@@ -158,4 +190,26 @@ class Example:
                 self.input_data = {}
             else:
                 raise
+
+
+def create_output_model() -> type[BaseModel]:
+    """Create a Pydantic model with a single field 'output' of type str.
+    
+    This is used when string outputs are provided instead of structured Pydantic models.
+    The model will have a single field called 'output' that accepts string values.
+    
+    Returns:
+        A Pydantic model class with a single 'output' field of type str.
+        
+    Example:
+        ```python
+        OutputModel = create_output_model()
+        instance = OutputModel(output="excellent")
+        assert instance.output == "excellent"
+        ```
+    """
+    return create_model(
+        "OutputModel",
+        output=(str, Field(description="The output value")),
+    )
 

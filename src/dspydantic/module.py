@@ -50,6 +50,28 @@ class PydanticOptimizerModule(dspy.Module):
             signature = "instruction_prompt -> optimized_instruction_prompt"
             self.instruction_prompt_optimizer = dspy.ChainOfThought(signature)
 
+    def _remove_optimization_markers(self, text: str) -> str:
+        """Remove optimization instruction markers from optimized prompt text."""
+        text = re.sub(
+            r"ORIGINAL_PROMPT_TEMPLATE:.*?PROMPT_TEMPLATE_REWRITE_INSTRUCTIONS:",
+            "",
+            text,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+        text = re.sub(
+            r"PROMPT_TEMPLATE_REWRITE_INSTRUCTIONS:.*$",
+            "",
+            text,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+        text = re.sub(
+            r"\n\n(?:ORIGINAL_PROMPT_TEMPLATE|PROMPT_TEMPLATE_REWRITE_INSTRUCTIONS):.*?\.?",
+            "",
+            text,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+        return text.strip()
+
     def forward(
         self,
         system_prompt: str | None = None,
@@ -147,25 +169,7 @@ class PydanticOptimizerModule(dspy.Module):
                 optimized_prompt = result.optimized_instruction_prompt
 
                 # Remove the instruction markers and their content
-                optimized_prompt = re.sub(
-                    r"ORIGINAL_PROMPT_TEMPLATE:.*?PROMPT_TEMPLATE_REWRITE_INSTRUCTIONS:",
-                    "",
-                    optimized_prompt,
-                    flags=re.DOTALL | re.IGNORECASE,
-                )
-                optimized_prompt = re.sub(
-                    r"PROMPT_TEMPLATE_REWRITE_INSTRUCTIONS:.*$",
-                    "",
-                    optimized_prompt,
-                    flags=re.DOTALL | re.IGNORECASE,
-                )
-                optimized_prompt = re.sub(
-                    r"\n\n(?:ORIGINAL_PROMPT_TEMPLATE|PROMPT_TEMPLATE_REWRITE_INSTRUCTIONS):.*?\.?",
-                    "",
-                    optimized_prompt,
-                    flags=re.DOTALL | re.IGNORECASE,
-                )
-                optimized_prompt = optimized_prompt.strip()
+                optimized_prompt = self._remove_optimization_markers(optimized_prompt)
 
                 # Verify all placeholders are present exactly once
                 for placeholder_name in unique_placeholders:

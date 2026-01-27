@@ -1,6 +1,5 @@
 """Main optimizer class for Pydantic models using DSPy."""
 
-import os
 from collections.abc import Callable
 from typing import Any
 
@@ -8,11 +7,10 @@ import dspy
 from dspy.teleprompt import MIPROv2, Teleprompter  # noqa: E402
 from pydantic import BaseModel
 
-from dspydantic.evaluators import default_evaluate_fn
+from dspydantic.evaluators.functions import default_evaluate_fn
 from dspydantic.extractor import extract_field_descriptions, extract_field_types
-from dspydantic.hitl import HitlManager
 from dspydantic.module import PydanticOptimizerModule
-from dspydantic.types import Example, OptimizationResult
+from dspydantic.types import Example, OptimizationResult, create_output_model
 from dspydantic.utils import convert_images_to_dspy_images, format_instruction_prompt_template
 
 
@@ -40,11 +38,14 @@ class PydanticOptimizer:
                 )
             ]
 
+            # Configure DSPy first
+            import dspy
+            lm = dspy.LM("openai/gpt-4o", api_key="your-key")
+            dspy.configure(lm=lm)
+
             optimizer = PydanticOptimizer(
                 model=User,
-                examples=examples,
-                model_id="gpt-4o",
-                api_key="your-key"
+                examples=examples
             )
 
         Using "exact" metric for exact string matching::
@@ -63,16 +64,6 @@ class PydanticOptimizer:
                 model=User,
                 examples=examples,
                 evaluate_fn="levenshtein",
-                model_id="gpt-4o",
-                api_key="your-key"
-            )
-
-        Using "exact-hitl" or "levenshtein-hitl" for human-in-the-loop evaluation::
-
-            optimizer = PydanticOptimizer(
-                model=User,
-                examples=examples,
-                evaluate_fn="exact-hitl",  # or "levenshtein-hitl"
                 model_id="gpt-4o",
                 api_key="your-key"
             )
@@ -97,14 +88,15 @@ class PydanticOptimizer:
                 api_key="your-key"
             )
 
-        Using a custom DSPy LM::
+        Configure DSPy first::
 
             import dspy
-            custom_lm = dspy.LM("gpt-4o", api_key="your-key")
+            lm = dspy.LM("openai/gpt-4o", api_key="your-key")
+            dspy.configure(lm=lm)
+
             optimizer = PydanticOptimizer(
                 model=User,
-                examples=examples,
-                lm=custom_lm
+                examples=examples
             )
 
         Passing optimizer as a string::
@@ -147,13 +139,14 @@ class PydanticOptimizer:
         Using None expected_output with custom judge LM::
 
             import dspy
-            judge_lm = dspy.LM("gpt-4o", api_key="your-key")
+            lm = dspy.LM("openai/gpt-4o", api_key="your-key")
+            dspy.configure(lm=lm)
+
+            judge_lm = dspy.LM("openai/gpt-4", api_key="your-key")
             optimizer = PydanticOptimizer(
                 model=User,
                 examples=examples_without_expected,
-                evaluate_fn=judge_lm,
-                model_id="gpt-4o",
-                api_key="your-key"
+                evaluate_fn=judge_lm
             )
 
         Using None expected_output with custom judge function::
@@ -180,7 +173,7 @@ class PydanticOptimizer:
 
     def __init__(
         self,
-        model: type[BaseModel],
+        model: type[BaseModel] | None,
         examples: list[Example],
         evaluate_fn: Callable[[Example, dict[str, str], str | None, str | None], float]
         | Callable[[Example, dict[str, Any], dict[str, str], str | None, str | None], float]
@@ -189,11 +182,6 @@ class PydanticOptimizer:
         | None = None,
         system_prompt: str | None = None,
         instruction_prompt: str | None = None,
-        lm: dspy.LM | None = None,
-        model_id: str = "gpt-4o",
-        api_key: str | None = None,
-        api_base: str | None = None,
-        api_version: str | None = None,
         num_threads: int = 4,
         init_temperature: float = 1.0,
         verbose: bool = False,
@@ -201,11 +189,13 @@ class PydanticOptimizer:
         train_split: float = 0.8,
         optimizer_kwargs: dict[str, Any] | None = None,
         exclude_fields: list[str] | None = None,
+        evaluator_config: dict[str, Any] | None = None,
     ) -> None:
         """Initialize the Pydantic optimizer.
 
         Args:
-            model: The Pydantic model class to optimize.
+            model: The Pydantic model class to optimize. If None, will auto-create
+                a single-field model with field "output" when examples have string outputs.
             examples: List of examples to use for optimization.
             evaluate_fn: Optional function that evaluates the quality of optimized prompts.
 
@@ -213,11 +203,8 @@ class PydanticOptimizer:
                     - Takes (Example, optimized_descriptions dict, optimized_system_prompt,
                       optimized_instruction_prompt), returns a float score (0.0-1.0).
                     - Can also be a string: "exact" for exact matching, "levenshtein" for
-                      Levenshtein distance-based matching, "exact-hitl" for human-in-the-loop
-                      exact evaluation (shows GUI popup), "levenshtein-hitl" for
-                      human-in-the-loop Levenshtein evaluation (shows GUI popup), or None
-                      for default evaluation that performs structured extraction with the same
-                      LLM used for optimization.
+                      Levenshtein distance-based matching, or None for default evaluation
+                      that performs structured extraction with the same LLM used for optimization.
 
                 When expected_output is None:
                     - Can be a dspy.LM instance to use as a judge.
@@ -227,16 +214,6 @@ class PydanticOptimizer:
                     - If None, uses the default LLM judge (same LM as optimization).
             system_prompt: Optional initial system prompt to optimize.
             instruction_prompt: Optional initial instruction prompt to optimize.
-            lm: Optional DSPy language model instance. If provided, this will be used
-                instead of creating a new one from model_id/api_key/etc. If None,
-                a new dspy.LM will be created.
-            model_id: The model ID to use for optimization (e.g., "gpt-4o", "azure/gpt-4o").
-                Only used if `lm` is None.
-            api_key: Optional API key. If None, reads from OPENAI_API_KEY environment variable.
-                Only used if `lm` is None.
-            api_base: Optional API base URL (for Azure OpenAI or custom endpoints).
-                Only used if `lm` is None.
-            api_version: Optional API version (for Azure OpenAI). Only used if `lm` is None.
             num_threads: Number of threads for optimization.
             init_temperature: Initial temperature for optimization.
             verbose: If True, print detailed progress information.
@@ -261,6 +238,9 @@ class PydanticOptimizer:
                 Fields matching these paths (or starting with them) will be excluded
                 from scoring. Only applies when using default evaluation functions
                 (not custom evaluate_fn).
+            evaluator_config: Optional evaluator configuration dict with "default" and
+                "field_overrides" keys. If provided, uses configured evaluators instead
+                of evaluate_fn/metric. Supports string names, config dicts, and custom classes.
 
         Raises:
             ValueError: If at least one example is not provided, or if optimizer string
@@ -270,17 +250,31 @@ class PydanticOptimizer:
         if not examples:
             raise ValueError("At least one example must be provided")
 
+        # Detect if examples have string outputs
+        has_string_outputs = any(
+            isinstance(ex.expected_output, str) for ex in examples if ex.expected_output is not None
+        )
+
+        # Auto-create OutputModel if model is None and we have string outputs
+        if model is None:
+            if has_string_outputs:
+                model = create_output_model()
+            else:
+                raise ValueError(
+                    "model cannot be None unless examples have string expected_output values"
+                )
+        elif has_string_outputs:
+            # If model is provided but examples have strings, we'll convert strings to dicts
+            # with {"output": <string>} format during evaluation
+            pass
+
         self.model = model
         self.examples = examples
         self.evaluate_fn = evaluate_fn
         self.exclude_fields = exclude_fields
+        self.evaluator_config = evaluator_config
         self.system_prompt = system_prompt
         self.instruction_prompt = instruction_prompt
-        self.lm = lm
-        self.model_id = model_id
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
-        self.api_base = api_base
-        self.api_version = api_version
         self.num_threads = num_threads
         self.init_temperature = init_temperature
         self.verbose = verbose
@@ -321,9 +315,6 @@ class PydanticOptimizer:
         # Extract field types from Pydantic model
         self.field_types = extract_field_types(self.model)
 
-        # Initialize HITL manager
-        self._hitl_manager = HitlManager(self)
-
         # Check that we have something to optimize
         has_field_descriptions = bool(self.field_descriptions)
         has_system_prompt = self.system_prompt is not None
@@ -332,8 +323,8 @@ class PydanticOptimizer:
         if not (has_field_descriptions or has_system_prompt or has_instruction_prompt):
             raise ValueError(
                 "At least one of the following must be provided: "
-                "model fields (field descriptions are automatically set from field names if not provided), "
-                "system_prompt, or instruction_prompt"
+                "model fields (field descriptions are automatically set from field names "
+                "if not provided), system_prompt, or instruction_prompt"
             )
 
     @staticmethod
@@ -393,7 +384,11 @@ class PydanticOptimizer:
             return "bootstrapfewshotwithrandomsearch"
 
     def _default_evaluate_fn(
-        self, lm: dspy.LM, metric: str = "exact", judge_lm: dspy.LM | None = None
+        self,
+        lm: dspy.LM,
+        metric: str = "exact",
+        judge_lm: dspy.LM | None = None,
+        evaluator_config: dict[str, Any] | None = None,
     ) -> Callable[[Example, dict[str, str], str | None, str | None], float]:
         """Create a default evaluation function that uses the LLM for structured extraction.
 
@@ -426,75 +421,8 @@ class PydanticOptimizer:
             judge_lm=judge_lm,
             custom_judge_fn=custom_judge_fn,
             exclude_fields=self.exclude_fields,
+            evaluator_config=evaluator_config,
         )
-
-    def _show_loading_window(
-        self, evaluation_num: int | None = None, total_evaluations: int | None = None
-    ) -> None:
-        """Show a loading window while processing the next evaluation.
-
-        Args:
-            evaluation_num: Current evaluation number (1-based).
-            total_evaluations: Total number of evaluations.
-        """
-        self._hitl_manager.show_loading_window(evaluation_num, total_evaluations)
-
-    def _close_loading_window(self) -> None:
-        """Close the loading window if it exists."""
-        self._hitl_manager.close_loading_window()
-
-    def _show_hitl_popup(
-        self,
-        input_text: str | None,
-        images: list[str] | None,
-        proposed_output: dict[str, Any],
-        evaluation_num: int | None = None,
-        total_evaluations: int | None = None,
-    ) -> tuple[dict[str, Any], bool]:
-        """Show a GUI popup for human-in-the-loop evaluation.
-
-        Reuses the same window across evaluations, updating content in place.
-
-        Args:
-            input_text: Input text to display.
-            images: List of base64-encoded images to display.
-            proposed_output: Proposed output JSON to display and allow editing.
-            evaluation_num: Current evaluation number (1-based).
-            total_evaluations: Total number of evaluations.
-
-        Returns:
-            Tuple of (edited_output, was_edited) where edited_output is the final JSON
-            and was_edited indicates if the user made changes.
-        """
-        return self._hitl_manager.show_hitl_popup(
-            input_text=input_text,
-            images=images,
-            proposed_output=proposed_output,
-            evaluation_num=evaluation_num,
-            total_evaluations=total_evaluations,
-        )
-
-    def _close_hitl_window(self) -> None:
-        """Close the HITL window if it exists."""
-        self._hitl_manager.close_hitl_window()
-
-    def _hitl_evaluate_fn(
-        self, lm: dspy.LM, metric: str = "exact"
-    ) -> Callable[[Example, dict[str, str], str | None, str | None], float]:
-        """Create a human-in-the-loop evaluation function.
-
-        Delegates to HitlManager.
-
-        Args:
-            lm: The DSPy language model to use for extraction.
-            metric: Comparison metric to use. Options:
-                - "exact-hitl": Score is 0 if edited, 1 if not edited
-                - "levenshtein-hitl": Score is Levenshtein distance if edited, 1 if not edited
-
-        Returns:
-            An evaluation function that shows a GUI popup for human review.
-        """
-        return self._hitl_manager.create_hitl_evaluate_fn(lm, metric)
 
     def _create_metric_function(self, lm: dspy.LM) -> Callable[..., float]:
         """Create a metric function for DSPy optimization.
@@ -509,17 +437,25 @@ class PydanticOptimizer:
         evaluate_fn = self.evaluate_fn
         judge_lm: dspy.LM | None = None
 
-        if evaluate_fn is None:
-            evaluate_fn = self._default_evaluate_fn(lm)
-        elif isinstance(evaluate_fn, str):
-            # Handle string metrics: "exact", "levenshtein", "exact-hitl", or "levenshtein-hitl"
+        # Handle evaluator_config - convert string evaluate_fn to evaluator_config if needed
+        evaluator_config_to_use = self.evaluator_config
+        if evaluator_config_to_use is None and isinstance(evaluate_fn, str):
+            # Convert legacy string metric to evaluator_config format for backward compatibility
             evaluate_fn_lower = evaluate_fn.lower()
             if evaluate_fn_lower in ("exact", "levenshtein"):
-                evaluate_fn = self._default_evaluate_fn(lm, metric=evaluate_fn_lower)
-            elif evaluate_fn_lower in ("exact-hitl", "levenshtein-hitl"):
-                evaluate_fn = self._hitl_evaluate_fn(lm, metric=evaluate_fn_lower)
+                evaluator_config_to_use = {"default": evaluate_fn_lower, "field_overrides": {}}
+
+        if evaluate_fn is None:
+            evaluate_fn = self._default_evaluate_fn(lm, evaluator_config=evaluator_config_to_use)
+        elif isinstance(evaluate_fn, str):
+            # Handle string metrics: "exact" or "levenshtein"
+            evaluate_fn_lower = evaluate_fn.lower()
+            if evaluate_fn_lower in ("exact", "levenshtein"):
+                evaluate_fn = self._default_evaluate_fn(
+                    lm, metric=evaluate_fn_lower, evaluator_config=evaluator_config_to_use
+                )
             else:
-                valid_options = '"exact", "levenshtein", "exact-hitl", "levenshtein-hitl"'
+                valid_options = '"exact", "levenshtein"'
                 raise ValueError(
                     f"evaluate_fn must be a callable, dspy.LM, None, or "
                     f'one of ({valid_options}), got "{evaluate_fn}"'
@@ -527,7 +463,9 @@ class PydanticOptimizer:
         elif isinstance(evaluate_fn, dspy.LM):
             # If evaluate_fn is a dspy.LM, use it as judge when expected_output is None
             judge_lm = evaluate_fn
-            evaluate_fn = self._default_evaluate_fn(lm, judge_lm=judge_lm)
+            evaluate_fn = self._default_evaluate_fn(
+                lm, judge_lm=judge_lm, evaluator_config=evaluator_config_to_use
+            )
         elif callable(evaluate_fn):
             # Check if it's a judge function (takes extracted_data) or regular eval function
             # We'll handle this in the metric_function wrapper
@@ -570,83 +508,7 @@ class PydanticOptimizer:
                 optimized_instruction_prompt = self.instruction_prompt
 
             # Convert DSPy example to our Example type
-            # Extract input_data and expected_output from DSPy example
-            input_data = getattr(example, "input_data", {})
-            expected_output = getattr(example, "expected_output", None)
-            # Only use {} as default if expected_output attribute doesn't exist
-            # If it exists but is None, keep it as None
-            if not hasattr(example, "expected_output"):
-                expected_output = {}
-
-            # Reconstruct Example from input_data dictionary
-            # input_data can contain "text" and/or "images" keys
-            # Images might be dspy.Image objects or base64 strings
-            text = input_data.get("text") if isinstance(input_data, dict) else None
-            images = input_data.get("images") if isinstance(input_data, dict) else None
-            images_base64 = (
-                input_data.get("images_base64")
-                if isinstance(input_data, dict)
-                else None
-            )
-
-            # Create Example - if we have images, use image_base64 (first image)
-            # Prefer images_base64 (original base64) if available,
-            # otherwise try to extract from images
-            if images_base64 and isinstance(images_base64, list) and len(images_base64) > 0:
-                example_obj = Example(
-                    image_base64=images_base64[0],
-                    expected_output=expected_output,
-                )
-            elif images and isinstance(images, list) and len(images) > 0:
-                # If images are dspy.Image objects, we need to get base64 from them
-                # For now, try to get base64 from the original input_data if available
-                # Otherwise, create example with text
-                if text:
-                    example_obj = Example(
-                        text=text,
-                        expected_output=expected_output,
-                    )
-                else:
-                    # Fallback: try to extract base64 from dspy.Image if possible
-                    # dspy.Image objects have a url attribute that might be a data URL
-                    first_image = images[0]
-                    if hasattr(first_image, "url"):
-                        # Extract base64 from data URL if it's a data URL
-                        url = first_image.url
-                        if url.startswith("data:image"):
-                            # Extract base64 part from data URL
-                            base64_part = url.split(",")[-1] if "," in url else None
-                            if base64_part:
-                                example_obj = Example(
-                                    image_base64=base64_part,
-                                    expected_output=expected_output,
-                                )
-                            else:
-                                example_obj = Example(
-                                    text="",
-                                    expected_output=expected_output,
-                                )
-                        else:
-                            example_obj = Example(
-                                text="",
-                                expected_output=expected_output,
-                            )
-                    else:
-                        example_obj = Example(
-                            text="",
-                            expected_output=expected_output,
-                        )
-            elif text:
-                example_obj = Example(
-                    text=text,
-                    expected_output=expected_output,
-                )
-            else:
-                # Fallback: create a minimal example
-                example_obj = Example(
-                    text="",
-                    expected_output=expected_output,
-                )
+            example_obj = self._dspy_example_to_example(example)
 
             # Use the evaluation function
             score = evaluate_fn(
@@ -783,21 +645,20 @@ class PydanticOptimizer:
             if isinstance(input_data, dict) and "images" in input_data:
                 base64_images = input_data.get("images")
                 if base64_images:
-                    try:
-                        dspy_images = convert_images_to_dspy_images(base64_images)
-                        # Replace base64 strings with dspy.Image objects
-                        # Keep original base64 in a separate key for backward compatibility
-                        input_data = input_data.copy()
-                        input_data["images"] = dspy_images
-                        input_data["images_base64"] = base64_images  # Keep original for reference
-                    except ImportError:
-                        # If dspy is not available, keep base64 strings
-                        pass
+                    dspy_images = convert_images_to_dspy_images(base64_images)
+                    # Replace base64 strings with dspy.Image objects
+                    # Keep original base64 in a separate key for backward compatibility
+                    input_data = input_data.copy()
+                    input_data["images"] = dspy_images
+                    input_data["images_base64"] = base64_images  # Keep original for reference
 
-            # Convert expected_output to dict if it's a Pydantic model
+            # Convert expected_output to dict if it's a Pydantic model or string
             expected_output = ex.expected_output
             if isinstance(expected_output, BaseModel):
                 expected_output = expected_output.model_dump()
+            elif isinstance(expected_output, str):
+                # Convert string to dict format matching OutputModel structure
+                expected_output = {"output": expected_output}
 
             example_dict: dict[str, Any] = {
                 "input_data": input_data,
@@ -852,42 +713,39 @@ class PydanticOptimizer:
             print(f"Optimization threads: {self.num_threads}")
             print(f"{'='*60}\n")
 
-        # Configure DSPy LM - use provided lm or create one
-        if self.lm is not None:
-            lm = self.lm
-        elif self.api_base:
-            lm = dspy.LM(
-                self.model_id,
-                api_key=self.api_key,
-                api_base=self.api_base,
-                api_version=self.api_version,
+        # Use configured DSPy LM (should be set via dspy.configure())
+        if dspy.settings.lm is None:
+            raise ValueError(
+                "DSPy must be configured before optimization. "
+                "Call dspy.configure(lm=dspy.LM(...)) first."
             )
-        else:
-            lm = dspy.LM(
-                self.model_id,
-                api_key=self.api_key,
-            )
-
-        # Configure DSPy LM in the main thread before optimization
-        # This ensures the LM is available to all threads spawned by the optimizer
-        # We configure it here so it's available when the optimizer spawns worker threads
-        dspy.configure(lm=lm)
+        lm = dspy.settings.lm
 
         # Ensure we have a valid evaluation function
         evaluate_fn_raw = self.evaluate_fn
         judge_lm: dspy.LM | None = None
 
-        if evaluate_fn_raw is None:
-            evaluate_fn = self._default_evaluate_fn(lm)
-        elif isinstance(evaluate_fn_raw, str):
-            # Handle string metrics: "exact", "levenshtein", "exact-hitl", or "levenshtein-hitl"
+        # Handle evaluator_config - convert string evaluate_fn to evaluator_config if needed
+        evaluator_config_to_use = self.evaluator_config
+        if evaluator_config_to_use is None and isinstance(evaluate_fn_raw, str):
+            # Convert legacy string metric to evaluator_config format for backward compatibility
             evaluate_fn_lower = evaluate_fn_raw.lower()
             if evaluate_fn_lower in ("exact", "levenshtein"):
-                evaluate_fn = self._default_evaluate_fn(lm, metric=evaluate_fn_lower)
-            elif evaluate_fn_lower in ("exact-hitl", "levenshtein-hitl"):
-                evaluate_fn = self._hitl_evaluate_fn(lm, metric=evaluate_fn_lower)
+                evaluator_config_to_use = {"default": evaluate_fn_lower, "field_overrides": {}}
+
+        if evaluate_fn_raw is None:
+            evaluate_fn = self._default_evaluate_fn(
+                lm, evaluator_config=evaluator_config_to_use
+            )
+        elif isinstance(evaluate_fn_raw, str):
+            # Handle string metrics: "exact" or "levenshtein"
+            evaluate_fn_lower = evaluate_fn_raw.lower()
+            if evaluate_fn_lower in ("exact", "levenshtein"):
+                evaluate_fn = self._default_evaluate_fn(
+                    lm, metric=evaluate_fn_lower, evaluator_config=evaluator_config_to_use
+                )
             else:
-                valid_options = '"exact", "levenshtein", "exact-hitl", "levenshtein-hitl"'
+                valid_options = '"exact", "levenshtein"'
                 raise ValueError(
                     f"evaluate_fn must be a callable, dspy.LM, None, or "
                     f'one of ({valid_options}), got "{evaluate_fn_raw}"'
@@ -895,10 +753,12 @@ class PydanticOptimizer:
         elif isinstance(evaluate_fn_raw, dspy.LM):
             # If evaluate_fn is a dspy.LM, use it as judge when expected_output is None
             judge_lm = evaluate_fn_raw
-            evaluate_fn = self._default_evaluate_fn(lm, judge_lm=judge_lm)
+            evaluate_fn = self._default_evaluate_fn(
+                lm, judge_lm=judge_lm, evaluator_config=evaluator_config_to_use
+            )
         elif callable(evaluate_fn_raw):
             # Custom function - use default wrapper, it will handle judge functions internally
-            evaluate_fn = self._default_evaluate_fn(lm)
+            evaluate_fn = self._default_evaluate_fn(lm, evaluator_config=evaluator_config_to_use)
         else:
             raise TypeError(f"Unexpected type for evaluate_fn: {type(evaluate_fn_raw)}")
 
@@ -918,6 +778,18 @@ class PydanticOptimizer:
         split_idx = max(1, int(len(trainset) * self.train_split))
         train_examples = trainset[:split_idx]
         val_examples = trainset[split_idx:] if split_idx < len(trainset) else trainset
+
+        # Few-shot demos: up to 8 training examples for the extraction prompt
+        max_few_shot = min(8, split_idx)
+        optimized_demos: list[dict[str, Any]] = []
+        for ex in self.examples[:max_few_shot]:
+            inp = ex.input_data
+            out = ex.expected_output
+            if isinstance(inp, BaseModel):
+                inp = inp.model_dump()
+            if isinstance(out, BaseModel):
+                out = out.model_dump()
+            optimized_demos.append({"input_data": inp, "expected_output": out})
 
         if self.verbose:
             print(f"Training examples: {len(train_examples)}")
@@ -1126,12 +998,21 @@ class PydanticOptimizer:
 
             # Convert DSPy example to our Example object
             example_obj = self._dspy_example_to_example(val_ex)
-            score = evaluate_fn(
-                example_obj,
-                pred_descriptions,
-                pred_system_prompt,
-                pred_instruction_prompt,
-            )
+            try:
+                score = evaluate_fn(
+                    example_obj,
+                    pred_descriptions,
+                    pred_system_prompt,
+                    pred_instruction_prompt,
+                    optimized_demos=optimized_demos,
+                )
+            except TypeError:
+                score = evaluate_fn(
+                    example_obj,
+                    pred_descriptions,
+                    pred_system_prompt,
+                    pred_instruction_prompt,
+                )
             evaluation_scores.append(score)
 
         avg_score = (
@@ -1173,6 +1054,7 @@ class PydanticOptimizer:
             },
             baseline_score=baseline_avg,
             optimized_score=avg_score,
+            optimized_demos=optimized_demos,
         )
 
         if self.verbose:
@@ -1191,9 +1073,6 @@ class PydanticOptimizer:
             else:
                 print("No change in performance.")
             print(f"{'='*60}\n")
-
-        # Close HITL window if it exists (optimization complete)
-        self._close_hitl_window()
 
         return result
 
