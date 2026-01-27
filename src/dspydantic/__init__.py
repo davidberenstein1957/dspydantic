@@ -7,8 +7,9 @@ import dspydantic.evaluators  # noqa: F401
 from dspydantic.evaluators import (
     LabelModelGrader,
     LevenshteinEvaluator,
+    PredefinedScoreEvaluator,
     PythonCodeEvaluator,
-    ScoreModelGrader,
+    ScoreJudge,
     StringCheckEvaluator,
     TextSimilarityEvaluator,
 )
@@ -24,18 +25,23 @@ from dspydantic.extractor import (
     extract_field_descriptions,
 )
 from dspydantic.optimizer import PydanticOptimizer
-from dspydantic.types import Example, OptimizationResult, create_output_model
+from dspydantic.persistence import PersistenceError
+from dspydantic.prompter import Prompter
+from dspydantic.types import Example, OptimizationResult, PrompterState, create_output_model
 from dspydantic.utils import (
     image_to_base64,
     pdf_to_base64_images,
     prepare_input_data,
 )
 
-__version__ = "0.0.7"
+__version__ = "0.1"
 __all__ = [
     "PydanticOptimizer",
+    "Prompter",
     "Example",
     "OptimizationResult",
+    "PrompterState",
+    "PersistenceError",
     "extract_field_descriptions",
     "apply_optimized_descriptions",
     "create_optimized_model",
@@ -51,8 +57,9 @@ __all__ = [
     "StringCheckEvaluator",
     "LevenshteinEvaluator",
     "TextSimilarityEvaluator",
-    "ScoreModelGrader",
+    "ScoreJudge",
     "LabelModelGrader",
     "PythonCodeEvaluator",
+    "PredefinedScoreEvaluator",
 ]
 

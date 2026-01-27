@@ -33,6 +33,17 @@ dev = [
     "black>=24.0.0",
     "ruff>=0.1.0",
     "datasets",
+    "pre-commit>=3.6.0",
+    "mypy>=1.8.0",
+    "watchdog>=4.0.0",
+]
+docs = [
+    "mkdocs-material>=9.5.0",
+    "mktestdocs>=0.1.0",
+    "mkdocstrings[python]>=0.24.0",
+    "mkdocs-jupyter>=0.24.0",
+    "jupyter>=1.0.0",
+    "nbconvert>=7.0.0",
 ]
 
 [build-system]

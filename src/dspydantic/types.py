@@ -17,6 +17,7 @@ class OptimizationResult:
         optimized_descriptions: Dictionary mapping field paths to optimized descriptions.
         optimized_system_prompt: Optimized system prompt (if provided).
         optimized_instruction_prompt: Optimized instruction prompt (if provided).
+        optimized_demos: Few-shot examples (input_data, expected_output) for the extraction prompt.
         metrics: Dictionary containing optimization metrics (score, improvement, etc.).
         baseline_score: Baseline score before optimization.
         optimized_score: Score after optimization.
@@ -28,6 +29,35 @@ class OptimizationResult:
     metrics: dict[str, Any]
     baseline_score: float
     optimized_score: float
+    optimized_demos: list[dict[str, Any]] | None = None
+
+
+@dataclass
+class PrompterState:
+    """State of a Prompter instance for serialization.
+
+    This class contains all the information needed to save and restore a Prompter instance.
+
+    Attributes:
+        model_schema: JSON schema of the Pydantic model.
+        optimized_descriptions: Dictionary of optimized field descriptions.
+        optimized_system_prompt: Optimized system prompt (if any).
+        optimized_instruction_prompt: Optimized instruction prompt (if any).
+        model_id: LLM model identifier.
+        model_config: Model configuration (API base, version, etc.).
+        version: dspydantic version for compatibility checking.
+        metadata: Additional metadata (timestamp, optimization metrics, etc.).
+    """
+
+    model_schema: dict[str, Any]
+    optimized_descriptions: dict[str, str]
+    optimized_system_prompt: str | None
+    optimized_instruction_prompt: str | None
+    model_id: str
+    model_config: dict[str, Any]
+    version: str
+    metadata: dict[str, Any]
+    optimized_demos: list[dict[str, Any]] | None = None
 
 
 class Example:

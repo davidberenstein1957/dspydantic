@@ -1,4 +1,4 @@
-"""Score model grader evaluator using LLM for numeric scoring."""
+"""Score judge evaluator using LLM for numeric scoring."""
 
 import json
 import re
@@ -7,7 +7,7 @@ from typing import Any
 import dspy
 
 
-class ScoreModelGrader:
+class ScoreJudge:
     """Evaluator that uses an LLM to assign a numeric score.
 
     Config options:
@@ -18,7 +18,7 @@ class ScoreModelGrader:
     """
 
     def __init__(self, config: dict[str, Any]) -> None:
-        """Initialize ScoreModelGrader.
+        """Initialize ScoreJudge.
 
         Args:
             config: Configuration dictionary with criteria, lm, temperature, system_prompt options.
@@ -51,7 +51,7 @@ class ScoreModelGrader:
             # Use default LM from dspy settings
             lm = dspy.settings.lm
             if lm is None:
-                raise ValueError("No LM available for ScoreModelGrader")
+                raise ValueError("No LM available for ScoreJudge")
         else:
             lm = self.lm
 

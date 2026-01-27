@@ -13,7 +13,7 @@ Instead of spending hours crafting the perfect field descriptions for your Pydan
 ```python
 from pydantic import BaseModel, Field
 from typing import Literal
-from dspydantic import PydanticOptimizer, Example, create_optimized_model
+from dspydantic import Prompter, Example, create_optimized_model
 
 # 1. Define your model (any Pydantic model works)
 class TransactionRecord(BaseModel):
@@ -50,14 +50,12 @@ examples = [
 ]
 
 # 3. Optimize and use
-optimizer = PydanticOptimizer(
+prompter = Prompter(
     model=TransactionRecord,
-    examples=examples,
-    model_id="gpt-4o",
     system_prompt="You are a financial document analysis assistant.",
     instruction_prompt="Extract transaction details from the financial report.",
 )
-result = optimizer.optimize() 
+result = prompter.optimize(examples=examples, model_id="gpt-4o")
 
 OptimizedTransactionRecord = create_optimized_model(
     TransactionRecord,
@@ -86,12 +84,16 @@ uv pip install dspydantic
 ## 🌟 Key Features
 
 - **Auto-optimization**: Finds best field descriptions automatically
+- **Unified Prompter class**: Single class for both optimization and extraction
+- **Save & Load**: Save optimized prompters for production deployment
+- **Pre-defined feedback**: Use pre-computed scores for evaluation
 - **Simple input**: Just examples (text/images/PDFs) + your Pydantic model
 - **Better output**: Optimized model ready to use with improved accuracy
 - **Template prompts**: Dynamic prompts with `{placeholders}` for context-aware extraction
 - **Enum & Literal support**: Optimize classification models
 - **Multiple formats**: Text, images, PDFs—works with any input type
 - **Smart defaults**: Auto-selects best optimizer, no configuration needed
+- **Backward compatible**: `PydanticOptimizer` still available; `Prompter` is the recommended API
 
 ## 📚 Examples
 
@@ -161,15 +163,10 @@ examples = [
 ### 3. Optimize
 
 ```python
-from dspydantic import PydanticOptimizer
+from dspydantic import Prompter
 
-optimizer = PydanticOptimizer(
-    model=ProductInfo,
-    examples=examples,
-    model_id="gpt-4o"
-)
-
-result = optimizer.optimize()  # Returns optimized descriptions
+prompter = Prompter(model=ProductInfo)
+result = prompter.optimize(examples=examples, model_id="gpt-4o")  # Returns optimized descriptions
 
 # Access optimized results
 result.optimized_descriptions        # dict[str, str] - optimized field descriptions
@@ -231,6 +228,118 @@ product = OptimizedProductInfo.model_validate_json(
 ```
 
 **That's it!** Your optimized model extracts data more accurately with zero code changes.
+
+## 🚀 Unified Prompter Workflow
+
+Use the new `Prompter` class for a unified optimization and extraction workflow:
+
+```python
+from dspydantic import Prompter, Example
+from pydantic import BaseModel, Field
+
+class Product(BaseModel):
+    name: str = Field(description="Product name")
+    price: float = Field(description="Product price")
+
+# Create prompter
+prompter = Prompter(
+    model=Product,
+    model_id="gpt-4o"
+)
+
+# Optimize
+result = prompter.optimize(
+    examples=[
+        Example(
+            text="iPhone 15 Pro Max, $1199",
+            expected_output={"name": "iPhone 15 Pro Max", "price": 1199.0}
+        )
+    ]
+)
+
+# Save for production
+prompter.save("./production_prompter")
+
+# Load in production
+prompter = Prompter.load("./production_prompter", model=Product)
+
+# Extract
+data = prompter.extract("Samsung Galaxy S24, $899")
+print(data.name)  # "Samsung Galaxy S24"
+print(data.price)  # 899.0
+```
+
+## 💾 Save & Load Prompters
+
+Save optimized prompters for production deployment:
+
+```python
+# After optimization
+prompter.save("./production_prompter")
+
+# Load anywhere (API keys must be available)
+prompter = Prompter.load("./production_prompter", model=Product, api_key="your-key")
+
+# Use directly
+data = prompter.extract("New product text")
+```
+
+**What gets saved:**
+- Complete Pydantic model schema
+- All optimized field descriptions
+- Optimized system and instruction prompts
+- Model configuration (model_id, api_base, api_version)
+- Optimization metadata
+
+**Security:** API keys are NEVER saved - must be provided at load time.
+
+## 📊 Pre-defined Feedback Evaluation
+
+Use pre-computed scores for evaluation when you already have ground truth:
+
+```python
+from dspydantic import Prompter
+from dspydantic.evaluators import PredefinedScoreEvaluator
+
+# Pre-computed scores
+scores = [0.95, 0.87, 0.92, 1.0, 0.78]
+evaluator = PredefinedScoreEvaluator(config={"scores": scores})
+
+prompter = Prompter(model=Product, model_id="gpt-4o")
+result = prompter.optimize(
+    examples=examples,
+    evaluate_fn=evaluator  # Uses pre-defined scores
+)
+```
+
+Works with bool values and numbers too:
+
+```python
+# Bool values (True=1.0, False=0.0)
+bool_scores = [True, False, True, True]
+evaluator = PredefinedScoreEvaluator(config={"scores": bool_scores})
+
+# Numbers (normalized to 0.0-1.0)
+numeric_scores = [95, 87, 92, 100]
+evaluator = PredefinedScoreEvaluator(config={"scores": numeric_scores, "max_value": 100})
+```
+
+**Alternative: Python function that pops from list:**
+
+```python
+# Create a function that pops scores from a list
+def pop_score_evaluator(example, optimized_descriptions, optimized_system_prompt, optimized_instruction_prompt):
+    # Pre-defined scores list (shared state)
+    if not hasattr(pop_score_evaluator, 'scores'):
+        pop_score_evaluator.scores = [0.95, 0.87, 0.92, 1.0, 0.78]
+    
+    # Pop next score
+    if pop_score_evaluator.scores:
+        return pop_score_evaluator.scores.pop(0)
+    return 0.0  # Default if list exhausted
+
+prompter.optimize(examples=examples, evaluate_fn=pop_score_evaluator)
+```
 
 ## 🏭 Real-World Usage Scenarios
 
@@ -393,14 +502,12 @@ examples = [
 ]
 
 # Template prompts with {placeholders} are automatically filled from dict keys
-optimizer = PydanticOptimizer(
+prompter = Prompter(
     model=ProductReview,
-    examples=examples,
     system_prompt="You are an expert analyst specializing in {category} reviews.",
     instruction_prompt="Analyze the {category} review about {product}: {review}",
-    model_id="gpt-4o"
 )
-result = optimizer.optimize()
+result = prompter.optimize(examples=examples, model_id="gpt-4o")
 # Access: result.optimized_system_prompt, result.optimized_instruction_prompt, result.optimized_descriptions
 ```
 
@@ -448,13 +555,12 @@ class PatientRecord(BaseModel):
     metadata: str = Field(description="Internal metadata")  # Not important for evaluation
     timestamp: str = Field(description="Record timestamp")  # Not important for evaluation
 
-optimizer = PydanticOptimizer(
-    model=PatientRecord,
+prompter = Prompter(model=PatientRecord)
+result = prompter.optimize(
     examples=examples,
     model_id="gpt-4o",
     exclude_fields=["metadata", "timestamp"],  # These fields won't affect scoring
 )
-result = optimizer.optimize()
 ```
 
 Excluded fields will still be extracted by the model, but they won't be included in the evaluation score calculation. This is useful when you have fields that are not critical for optimization or that you don't want to optimize for.
@@ -494,26 +600,27 @@ examples = [
 Use built-in options: `"exact"` or `"levenshtein"`:
 
 ```python
-from dspydantic import PydanticOptimizer
+from dspydantic import Prompter
 
-optimizer = PydanticOptimizer(
-    model=PatientRecord,
+prompter = Prompter(model=PatientRecord)
+result = prompter.optimize(
     examples=examples,
     evaluate_fn="exact",  # or "levenshtein" for fuzzy matching
-    model_id="gpt-4o"
+    model_id="gpt-4o",
 )
 ```
 
 #### Custom Evaluation Function
 
 ```python
-from dspydantic import PydanticOptimizer
+from dspydantic import Prompter
 
 def evaluate(example, optimized_descriptions, system_prompt, instruction_prompt) -> float:
     # Returns score 0.0 to 1.0
     return 0.85
 
-optimizer = PydanticOptimizer(model=Customer, examples=examples, evaluate_fn=evaluate, model_id="gpt-4o")
+prompter = Prompter(model=Customer)
+result = prompter.optimize(examples=examples, evaluate_fn=evaluate, model_id="gpt-4o")
 ```
 
 #### LLM Judge (No Expected Output)
@@ -523,7 +630,7 @@ When `expected_output` is `None`, use an LLM as a judge for unlabeled data:
 ```python
 from pydantic import BaseModel, Field
 from typing import Literal
-from dspydantic import Example, PydanticOptimizer
+from dspydantic import Example, Prompter
 import dspy
 
 class Transaction(BaseModel):
@@ -538,11 +645,13 @@ examples = [
 ]
 
 # Uses model_id LLM as judge by default
-optimizer = PydanticOptimizer(model=Transaction, examples=examples, model_id="gpt-4o")
+prompter = Prompter(model=Transaction)
+result = prompter.optimize(examples=examples, model_id="gpt-4o")
 
 # Or use a separate judge LLM
 judge_lm = dspy.LM("gpt-4", api_key="your-api-key")
-optimizer = PydanticOptimizer(model=Transaction, examples=examples, evaluate_fn=judge_lm, model_id="gpt-4o-mini")
+prompter = Prompter(model=Transaction)
+result = prompter.optimize(examples=examples, evaluate_fn=judge_lm, model_id="gpt-4o-mini")
 ```
 
 ### Optimizer Selection
@@ -553,119 +662,90 @@ Auto-selects optimizer based on dataset size, or specify manually:
 - **Manual**: Pass string (`"miprov2"`, `"gepa"`, `"copro"`, etc.) or Teleprompter instance
 
 ```python
-from dspydantic import PydanticOptimizer
+from dspydantic import Prompter
 from dspy.teleprompt import MIPROv2
 
 # Auto-select (default)
-optimizer = PydanticOptimizer(model=PatientRecord, examples=examples, model_id="gpt-4o")
+prompter = Prompter(model=PatientRecord)
+result = prompter.optimize(examples=examples, model_id="gpt-4o")
 
 # Manual selection
-optimizer = PydanticOptimizer(model=PatientRecord, examples=examples, optimizer="miprov2", model_id="gpt-4o")
+prompter = Prompter(model=PatientRecord)
+result = prompter.optimize(examples=examples, optimizer="miprov2", model_id="gpt-4o")
 
 # Custom optimizer instance
 custom_optimizer = MIPROv2(metric=my_metric, num_threads=8)
-optimizer = PydanticOptimizer(model=PatientRecord, examples=examples, optimizer=custom_optimizer)
+prompter = Prompter(model=PatientRecord)
+result = prompter.optimize(examples=examples, optimizer=custom_optimizer, model_id="gpt-4o")
 ```
 
 ## API Reference
 
-### `PydanticOptimizer`
+The API is organized into four areas. See the [full documentation](https://davidberenstein1957.github.io/dspydantic/) for details.
 
-Main optimizer class.
+| Area | Description |
+|------|-------------|
+| **[Prompter](docs/reference/api/prompter.md)** | Unified optimization and prediction: `optimize()`, `predict()`, `save()`, `load()`, `from_optimization_result()` |
+| **[Types](docs/reference/api/types.md)** | `Example`, `OptimizationResult`, `PrompterState` |
+| **[Extractor](docs/reference/api/extractor.md)** | `extract_field_descriptions()`, `extract_field_types()`, `create_optimized_model()`, `apply_optimized_descriptions()` |
+| **[Evaluators](docs/reference/api/evaluators.md)** | `exact`, `levenshtein`, `text_similarity`, `score_judge`, `label_model_grader`, `python_code`, `predefined_score` |
 
-**Parameters:**
+### Prompter
 
-- `model` (type[BaseModel]): Pydantic model class to optimize
-- `examples` (list[Example]): Examples for optimization (typically 5-20)
-- `evaluate_fn` (Callable | dspy.LM | str | None): Evaluation function, built-in ("exact", "levenshtein"), or dspy.LM instance
-- `system_prompt` (str | None): Optional system prompt to optimize
-- `instruction_prompt` (str | None): Optional instruction prompt to optimize (supports `{placeholders}`)
-- `lm` (dspy.LM | None): Optional DSPy LM instance (overrides model_id/api_key)
-- `model_id` (str): LLM model ID (default: "gpt-4o")
-- `api_key` (str | None): API key (default: from OPENAI_API_KEY env var)
-- `api_base` (str | None): API base URL (for Azure OpenAI)
-- `api_version` (str | None): API version (for Azure OpenAI)
-- `num_threads` (int): Optimization threads (default: 4)
-- `init_temperature` (float): Initial temperature (default: 1.0)
-- `verbose` (bool): Print progress (default: False)
-- `optimizer` (str | Teleprompter | None): Optimizer name or instance (auto-selects if None)
-- `train_split` (float): Training split fraction (default: 0.8)
-- `optimizer_kwargs` (dict[str, Any] | None): Additional kwargs for optimizer
-- `exclude_fields` (list[str] | None): Field names to exclude from evaluation
-
-**Returns:** `OptimizationResult` with optimized descriptions, prompts, and metrics
-
-### `Example`
-
-Example data for optimization.
-
-**Parameters:**
-
-- `expected_output` (dict | BaseModel | None): Expected output (Pydantic model or dict). If `None`, uses LLM judge
-- `text` (str | dict | None): Plain text input or dict for template prompts
-- `image_path` (str | Path | None): Path to image file
-- `image_base64` (str | None): Base64-encoded image
-- `pdf_path` (str | Path | None): Path to PDF file
-- `pdf_dpi` (int): DPI for PDF conversion (default: 300)
-
-**Examples:**
+Unified class for optimization and prediction.
 
 ```python
-# Text input
-Example(text="Goldman Sachs processed $2.5M equity trade", expected_output=Transaction(...))
-
-# Image input
-Example(image_path="report.png", expected_output=Transaction(...))
-
-# PDF input
-Example(pdf_path="statement.pdf", expected_output=Transaction(...))
-
-# Template prompt (dict)
-Example(text={"report": "...", "date": "..."}, expected_output=Transaction(...))
-
-# LLM judge (no expected_output)
-Example(text="...", expected_output=None)
+prompter = Prompter(model=MyModel, model_id="gpt-4o")
+result = prompter.optimize(examples=[...])
+prompter.save("./my_prompter")
+prompter = Prompter.load("./my_prompter", model=MyModel)
+data = prompter.predict("New text")  # or predict(image_path=..., pdf_path=...)
 ```
 
-### `create_optimized_model(model, optimized_descriptions)`
+### Types
 
-Create a new Pydantic model class with optimized descriptions.
+- **Example** – `text` | `image_path` | `pdf_path` | dict, plus `expected_output`
+- **OptimizationResult** – `optimized_descriptions`, `optimized_system_prompt`, `optimized_instruction_prompt`, `metrics`, `baseline_score`, `optimized_score`
+- **PrompterState** – Serialized prompter (used by save/load)
 
-**Parameters:**
+### Extractor
 
-- `model` (type[BaseModel]): Original Pydantic model
-- `optimized_descriptions` (dict[str, str]): From `result.optimized_descriptions`
+- **create_optimized_model(model, optimized_descriptions)** – New Pydantic model class with optimized field descriptions
+- **apply_optimized_descriptions(model, optimized_descriptions)** – JSON schema with optimized descriptions
+- **extract_field_descriptions(model)** – Field path → description dict
+- **extract_field_types(model)** – Field path → type info
 
-**Returns:** `type[BaseModel]` - New model class with optimized descriptions
+### Evaluators
 
-**Example:**
+| Alias | Use case |
+|-------|----------|
+| `exact` | Exact string match |
+| `levenshtein` | Fuzzy string match |
+| `text_similarity` | Semantic similarity |
+| `score_judge` | Numeric scores (LLM judge) |
+| `label_model_grader` | Labels/categories (LLM judge) |
+| `python_code` | Custom evaluation logic |
+| `predefined_score` | Pre-computed scores |
+
+## Backward Compatibility
+
+`PydanticOptimizer` remains available for callers that prefer the standalone API. Prefer `Prompter` for new code:
 
 ```python
-OptimizedTransaction = create_optimized_model(Transaction, result.optimized_descriptions)
-response = client.chat.completions.create(model="gpt-4o", messages=messages, response_format=OptimizedTransaction)
+# Preferred: Prompter (unified optimize + predict)
+from dspydantic import Prompter, Example, create_optimized_model
+prompter = Prompter(model=MyModel)
+result = prompter.optimize(examples=examples, model_id="gpt-4o")
+OptimizedModel = create_optimized_model(MyModel, result.optimized_descriptions)
+
+# Legacy: PydanticOptimizer (standalone optimizer only)
+from dspydantic import PydanticOptimizer, create_optimized_model
+optimizer = PydanticOptimizer(model=MyModel, examples=examples, model_id="gpt-4o")
+result = optimizer.optimize()
+OptimizedModel = create_optimized_model(MyModel, result.optimized_descriptions)
 ```
 
-### `apply_optimized_descriptions(model, optimized_descriptions)`
-
-Get optimized JSON schema without creating a new model class.
-
-**Parameters:**
-
-- `model` (type[BaseModel]): Original Pydantic model
-- `optimized_descriptions` (dict[str, str]): From `result.optimized_descriptions`
-
-**Returns:** `dict` - JSON schema with optimized descriptions
-
-**Example:**
-
-```python
-optimized_schema = apply_optimized_descriptions(ProductInfo, result.optimized_descriptions)
-response = client.chat.completions.create(
-    model="gpt-4o",
-    messages=messages,
-    response_format={"type": "json_schema", "json_schema": {"schema": optimized_schema}}
-)
-```
+Convert `OptimizationResult` to `Prompter` with `Prompter.from_optimization_result(model, result)`.
 
 ## License
 

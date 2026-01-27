@@ -79,7 +79,7 @@ def test_multi_image_api_call() -> None:
         assert len(kwargs["images"]) == 3
 
         # Configure DSPy with real LM
-        lm = dspy.LM("gpt-4o-mini", api_key=api_key)
+        lm = dspy.LM("openai/gpt-4.1-mini", api_key=api_key)
         dspy.configure(lm=lm)
 
         extractor = dspy.ChainOfThought(signature)

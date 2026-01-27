@@ -99,7 +99,7 @@ def example_per_field_evaluators() -> None:
                     },
                 },
                 "rating": {
-                    "type": "score_model_grader",
+                    "type": "score_judge",
                     "config": {
                         "criteria": "Rate the quality of this rating on a scale of 0-1",
                         "temperature": 0.0,
@@ -178,21 +178,19 @@ def example_python_code_evaluator() -> None:
     print("Example 4: Python Code Evaluator")
     print("=" * 60)
 
-    # Custom evaluation code
-    eval_code = """
-def evaluate(extracted, expected, input_data=None, field_path=None):
-    # Custom logic: check if extracted age is within 2 years of expected
-    if field_path == "age":
-        diff = abs(extracted - expected)
-        if diff == 0:
-            return 1.0
-        elif diff <= 2:
-            return 0.8
-        else:
-            return max(0.0, 1.0 - (diff / 10))
-    # For other fields, use exact match
-    return 1.0 if extracted == expected else 0.0
-"""
+    # Custom evaluation function
+    def age_evaluator(extracted, expected, input_data=None, field_path=None):
+        """Custom logic: check if extracted age is within 2 years of expected."""
+        if field_path == "age":
+            diff = abs(extracted - expected)
+            if diff == 0:
+                return 1.0
+            elif diff <= 2:
+                return 0.8
+            else:
+                return max(0.0, 1.0 - (diff / 10))
+        # For other fields, use exact match
+        return 1.0 if extracted == expected else 0.0
 
     examples = [
         Example(
@@ -221,9 +219,7 @@ def evaluate(extracted, expected, input_data=None, field_path=None):
                 "age": {
                     "type": "python_code",
                     "config": {
-                        "code": eval_code,
-                        "function_name": "evaluate",
-                        "sandbox": True,
+                        "function": age_evaluator,
                     },
                 },
             },

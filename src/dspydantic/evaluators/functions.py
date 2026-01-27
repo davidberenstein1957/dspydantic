@@ -24,6 +24,7 @@ from dspydantic.types import Example
 from dspydantic.utils import (
     build_image_signature_and_kwargs,
     convert_images_to_dspy_images,
+    format_demo_input,
     format_instruction_prompt_template,
 )
 
@@ -186,6 +187,8 @@ def default_evaluate_fn(
         optimized_descriptions: dict[str, str],
         optimized_system_prompt: str | None,
         optimized_instruction_prompt: str | None,
+        *,
+        optimized_demos: list[dict[str, Any]] | None = None,
     ) -> float:
         """Default evaluation function using LLM for structured extraction.
 
@@ -194,6 +197,7 @@ def default_evaluate_fn(
             optimized_descriptions: Dictionary of optimized field descriptions.
             optimized_system_prompt: Optimized system prompt (if provided).
             optimized_instruction_prompt: Optimized instruction prompt (if provided).
+            optimized_demos: Few-shot examples (input_data, expected_output) for the prompt.
 
         Returns:
             Score between 0.0 and 1.0 based on extraction accuracy.
@@ -255,6 +259,16 @@ def default_evaluate_fn(
             for field_path, description in optimized_descriptions.items():
                 prompt_parts.append(f"  - {field_path}: {description}")
 
+        # Few-shot examples
+        if optimized_demos:
+            prompt_parts.append("\nExamples:")
+            for i, d in enumerate(optimized_demos, 1):
+                inp = d.get("input_data") or {}
+                out = d.get("expected_output")
+                inp_desc = format_demo_input(inp)
+                out_str = json.dumps(out) if out is not None else "{}"
+                prompt_parts.append(f"  Example {i}:\n    Input: {inp_desc}\n    Output: {out_str}")
+
         if input_text:
             prompt_parts.append(f"\nInput text: {input_text}")
         if images:
@@ -297,7 +311,6 @@ def default_evaluate_fn(
         extractor = dspy.ChainOfThought(signature)
         # Set the prompt and call extractor with image kwargs
         extractor_kwargs["prompt"] = json_prompt
-
         result = extractor(**extractor_kwargs)
 
         # Extract output text

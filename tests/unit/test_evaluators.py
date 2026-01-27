@@ -1,21 +1,20 @@
 """Tests for evaluators module."""
 
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import dspy
 import pytest
 from pydantic import BaseModel, Field
 
-from dspydantic.evaluators.functions import default_evaluate_fn, default_judge_fn
 from dspydantic.evaluators import (
-    LabelModelGrader,
     LevenshteinEvaluator,
     PythonCodeEvaluator,
-    ScoreModelGrader,
+    ScoreJudge,
     StringCheckEvaluator,
-    TextSimilarityEvaluator,
 )
-from dspydantic.evaluators_config import EvaluatorFactory, EVALUATOR_REGISTRY, register_evaluator
+from dspydantic.evaluators.config import EVALUATOR_REGISTRY, EvaluatorFactory, register_evaluator
+from dspydantic.evaluators.functions import default_evaluate_fn, default_judge_fn
 from dspydantic.types import Example
 
 
@@ -679,6 +678,18 @@ def test_evaluator_factory_string_name() -> None:
     assert isinstance(evaluator, StringCheckEvaluator)
 
 
+def test_evaluator_factory_score_judge() -> None:
+    """Test EvaluatorFactory.create('score_judge') returns ScoreJudge."""
+    evaluator = EvaluatorFactory.create("score_judge")
+    assert isinstance(evaluator, ScoreJudge)
+
+
+def test_evaluator_factory_score_model_grader_alias() -> None:
+    """Test score_model_grader alias returns ScoreJudge for backward compat."""
+    evaluator = EvaluatorFactory.create("score_model_grader")
+    assert isinstance(evaluator, ScoreJudge)
+
+
 def test_evaluator_factory_config_dict() -> None:
     """Test EvaluatorFactory with config dict."""
     evaluator = EvaluatorFactory.create(
@@ -720,3 +731,84 @@ def test_register_evaluator() -> None:
 
     evaluator = EvaluatorFactory.create("test")
     assert isinstance(evaluator, TestEvaluator)
+
+
+def test_python_code_evaluator_with_callable() -> None:
+    """Test PythonCodeEvaluator with direct callable."""
+    def custom_evaluate(
+        extracted: Any,
+        expected: Any,
+        input_data: dict | None = None,
+        field_path: str | None = None,
+    ) -> float:
+        """Custom evaluation function."""
+        if extracted == expected:
+            return 1.0
+        return 0.5
+
+    evaluator = PythonCodeEvaluator(config={"function": custom_evaluate})
+    assert evaluator.evaluate("hello", "hello") == 1.0
+    assert evaluator.evaluate("hello", "world") == 0.5
+
+
+def test_python_code_evaluator_with_callable_field_path() -> None:
+    """Test PythonCodeEvaluator callable with field_path parameter."""
+    def custom_evaluate(
+        extracted: Any,
+        expected: Any,
+        input_data: dict | None = None,
+        field_path: str | None = None,
+    ) -> float:
+        """Custom evaluation function that uses field_path."""
+        if field_path == "age":
+            diff = abs(extracted - expected)
+            if diff == 0:
+                return 1.0
+            elif diff <= 2:
+                return 0.8
+            return max(0.0, 1.0 - (diff / 10))
+        return 1.0 if extracted == expected else 0.0
+
+    evaluator = PythonCodeEvaluator(config={"function": custom_evaluate})
+    assert evaluator.evaluate(30, 30, field_path="age") == 1.0
+    assert evaluator.evaluate(30, 31, field_path="age") == 0.8
+    assert evaluator.evaluate(30, 35, field_path="age") < 0.8
+
+
+def test_python_code_evaluator_with_method() -> None:
+    """Test PythonCodeEvaluator with a method."""
+    class CustomEvaluator:
+        def __init__(self, threshold: float):
+            self.threshold = threshold
+
+        def evaluate(
+            self,
+            extracted: float,
+            expected: float,
+            input_data: dict | None = None,
+            field_path: str | None = None,
+        ) -> float:
+            diff = abs(extracted - expected)
+            if diff <= self.threshold:
+                return 1.0
+            return max(0.0, 1.0 - (diff / expected))
+
+    custom = CustomEvaluator(threshold=0.1)
+    evaluator = PythonCodeEvaluator(config={"function": custom.evaluate})
+    assert evaluator.evaluate(10.0, 10.05) == 1.0
+    assert evaluator.evaluate(10.0, 11.0) < 1.0
+
+
+def test_python_code_evaluator_callable_validation() -> None:
+    """Test that non-callable function raises error."""
+    with pytest.raises(ValueError, match="'function' must be a callable"):
+        PythonCodeEvaluator(config={"function": "not a callable"})
+
+
+def test_python_code_evaluator_no_function_error() -> None:
+    """Test that providing no function raises error."""
+    with pytest.raises(
+        ValueError,
+        match="'function' must be provided for PythonCodeEvaluator",
+    ):
+        PythonCodeEvaluator(config={})

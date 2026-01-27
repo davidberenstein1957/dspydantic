@@ -1,6 +1,5 @@
 """Main optimizer class for Pydantic models using DSPy."""
 
-import os
 from collections.abc import Callable
 from typing import Any
 
@@ -39,11 +38,14 @@ class PydanticOptimizer:
                 )
             ]
 
+            # Configure DSPy first
+            import dspy
+            lm = dspy.LM("openai/gpt-4o", api_key="your-key")
+            dspy.configure(lm=lm)
+
             optimizer = PydanticOptimizer(
                 model=User,
-                examples=examples,
-                model_id="gpt-4o",
-                api_key="your-key"
+                examples=examples
             )
 
         Using "exact" metric for exact string matching::
@@ -86,14 +88,15 @@ class PydanticOptimizer:
                 api_key="your-key"
             )
 
-        Using a custom DSPy LM::
+        Configure DSPy first::
 
             import dspy
-            custom_lm = dspy.LM("gpt-4o", api_key="your-key")
+            lm = dspy.LM("openai/gpt-4o", api_key="your-key")
+            dspy.configure(lm=lm)
+
             optimizer = PydanticOptimizer(
                 model=User,
-                examples=examples,
-                lm=custom_lm
+                examples=examples
             )
 
         Passing optimizer as a string::
@@ -136,13 +139,14 @@ class PydanticOptimizer:
         Using None expected_output with custom judge LM::
 
             import dspy
-            judge_lm = dspy.LM("gpt-4o", api_key="your-key")
+            lm = dspy.LM("openai/gpt-4o", api_key="your-key")
+            dspy.configure(lm=lm)
+
+            judge_lm = dspy.LM("openai/gpt-4", api_key="your-key")
             optimizer = PydanticOptimizer(
                 model=User,
                 examples=examples_without_expected,
-                evaluate_fn=judge_lm,
-                model_id="gpt-4o",
-                api_key="your-key"
+                evaluate_fn=judge_lm
             )
 
         Using None expected_output with custom judge function::
@@ -178,11 +182,6 @@ class PydanticOptimizer:
         | None = None,
         system_prompt: str | None = None,
         instruction_prompt: str | None = None,
-        lm: dspy.LM | None = None,
-        model_id: str = "gpt-4o",
-        api_key: str | None = None,
-        api_base: str | None = None,
-        api_version: str | None = None,
         num_threads: int = 4,
         init_temperature: float = 1.0,
         verbose: bool = False,
@@ -215,16 +214,6 @@ class PydanticOptimizer:
                     - If None, uses the default LLM judge (same LM as optimization).
             system_prompt: Optional initial system prompt to optimize.
             instruction_prompt: Optional initial instruction prompt to optimize.
-            lm: Optional DSPy language model instance. If provided, this will be used
-                instead of creating a new one from model_id/api_key/etc. If None,
-                a new dspy.LM will be created.
-            model_id: The model ID to use for optimization (e.g., "gpt-4o", "azure/gpt-4o").
-                Only used if `lm` is None.
-            api_key: Optional API key. If None, reads from OPENAI_API_KEY environment variable.
-                Only used if `lm` is None.
-            api_base: Optional API base URL (for Azure OpenAI or custom endpoints).
-                Only used if `lm` is None.
-            api_version: Optional API version (for Azure OpenAI). Only used if `lm` is None.
             num_threads: Number of threads for optimization.
             init_temperature: Initial temperature for optimization.
             verbose: If True, print detailed progress information.
@@ -286,11 +275,6 @@ class PydanticOptimizer:
         self.evaluator_config = evaluator_config
         self.system_prompt = system_prompt
         self.instruction_prompt = instruction_prompt
-        self.lm = lm
-        self.model_id = model_id
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
-        self.api_base = api_base
-        self.api_version = api_version
         self.num_threads = num_threads
         self.init_temperature = init_temperature
         self.verbose = verbose
@@ -339,8 +323,8 @@ class PydanticOptimizer:
         if not (has_field_descriptions or has_system_prompt or has_instruction_prompt):
             raise ValueError(
                 "At least one of the following must be provided: "
-                "model fields (field descriptions are automatically set from field names if not provided), "
-                "system_prompt, or instruction_prompt"
+                "model fields (field descriptions are automatically set from field names "
+                "if not provided), system_prompt, or instruction_prompt"
             )
 
     @staticmethod
@@ -729,26 +713,13 @@ class PydanticOptimizer:
             print(f"Optimization threads: {self.num_threads}")
             print(f"{'='*60}\n")
 
-        # Configure DSPy LM - use provided lm or create one
-        if self.lm is not None:
-            lm = self.lm
-        elif self.api_base:
-            lm = dspy.LM(
-                self.model_id,
-                api_key=self.api_key,
-                api_base=self.api_base,
-                api_version=self.api_version,
+        # Use configured DSPy LM (should be set via dspy.configure())
+        if dspy.settings.lm is None:
+            raise ValueError(
+                "DSPy must be configured before optimization. "
+                "Call dspy.configure(lm=dspy.LM(...)) first."
             )
-        else:
-            lm = dspy.LM(
-                self.model_id,
-                api_key=self.api_key,
-            )
-
-        # Configure DSPy LM in the main thread before optimization
-        # This ensures the LM is available to all threads spawned by the optimizer
-        # We configure it here so it's available when the optimizer spawns worker threads
-        dspy.configure(lm=lm)
+        lm = dspy.settings.lm
 
         # Ensure we have a valid evaluation function
         evaluate_fn_raw = self.evaluate_fn
@@ -807,6 +778,18 @@ class PydanticOptimizer:
         split_idx = max(1, int(len(trainset) * self.train_split))
         train_examples = trainset[:split_idx]
         val_examples = trainset[split_idx:] if split_idx < len(trainset) else trainset
+
+        # Few-shot demos: up to 8 training examples for the extraction prompt
+        max_few_shot = min(8, split_idx)
+        optimized_demos: list[dict[str, Any]] = []
+        for ex in self.examples[:max_few_shot]:
+            inp = ex.input_data
+            out = ex.expected_output
+            if isinstance(inp, BaseModel):
+                inp = inp.model_dump()
+            if isinstance(out, BaseModel):
+                out = out.model_dump()
+            optimized_demos.append({"input_data": inp, "expected_output": out})
 
         if self.verbose:
             print(f"Training examples: {len(train_examples)}")
@@ -1015,12 +998,21 @@ class PydanticOptimizer:
 
             # Convert DSPy example to our Example object
             example_obj = self._dspy_example_to_example(val_ex)
-            score = evaluate_fn(
-                example_obj,
-                pred_descriptions,
-                pred_system_prompt,
-                pred_instruction_prompt,
-            )
+            try:
+                score = evaluate_fn(
+                    example_obj,
+                    pred_descriptions,
+                    pred_system_prompt,
+                    pred_instruction_prompt,
+                    optimized_demos=optimized_demos,
+                )
+            except TypeError:
+                score = evaluate_fn(
+                    example_obj,
+                    pred_descriptions,
+                    pred_system_prompt,
+                    pred_instruction_prompt,
+                )
             evaluation_scores.append(score)
 
         avg_score = (
@@ -1062,6 +1054,7 @@ class PydanticOptimizer:
             },
             baseline_score=baseline_avg,
             optimized_score=avg_score,
+            optimized_demos=optimized_demos,
         )
 
         if self.verbose:

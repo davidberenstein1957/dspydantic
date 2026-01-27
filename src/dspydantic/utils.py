@@ -80,6 +80,19 @@ def image_to_base64(image_path: str | Path) -> str:
     return base64_str
 
 
+def format_demo_input(inp: dict[str, Any] | Any) -> str:
+    """Format input_data for display in few-shot Examples (text and/or image count)."""
+    if not isinstance(inp, dict):
+        return str(inp)
+    parts = []
+    if inp.get("text"):
+        parts.append(str(inp["text"]))
+    if inp.get("images"):
+        n = len(inp["images"])
+        parts.append(f"{n} image(s)" if n != 1 else "1 image")
+    return " ".join(parts) if parts else "(no text)"
+
+
 def prepare_input_data(
     text: str | None = None,
     image_path: str | Path | None = None,
