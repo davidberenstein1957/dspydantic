@@ -97,17 +97,15 @@ nav:
       - With Pydantic Schema: guides/optimization/with-pydantic-schema.md
       - Without Pydantic Schema: guides/optimization/without-pydantic-schema.md
       - Prompt Templates: guides/optimization/prompt-templates.md
-      - Templates: guides/optimization/templates.md
-      - No Model: guides/optimization/no-model.md
     - Evaluators:
       - Configure Evaluators: guides/evaluators/configure.md
       - When to Use Which: guides/evaluators/selection.md
       - Custom Evaluators: guides/evaluators/custom.md
     - Advanced:
-      - Nested Models: guides/advanced/nested-models.md
-      - Field Exclusion: guides/advanced/field-exclusion.md
       - Configure Optimizations: guides/advanced/configure-optimizations.md
       - Configure Models: guides/advanced/configure-models.md
+      - Nested Models: guides/advanced/nested-models.md
+      - Field Exclusion: guides/advanced/field-exclusion.md
       - Save and Load: guides/advanced/save-load.md
   - Reference:
     - reference/api/prompter.md
