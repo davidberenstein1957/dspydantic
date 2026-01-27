@@ -132,7 +132,7 @@ DSPydantic works with **text**, **images**, and **PDFs**. Choose examples that m
 Optimize your model with different data types:
 
 - **[Optimization Modalities](guides/optimization/modalities.md)** - Text, images, PDFs
-- **[Optimize with Templates](guides/optimization/templates.md)** - Optimize with dynamic prompts
+- **[Optimize with Templates](guides/optimization/prompt-templates.md)** - Optimize with dynamic prompts
 
 ### Evaluators
 

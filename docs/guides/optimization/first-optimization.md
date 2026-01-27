@@ -180,7 +180,7 @@ You've successfully:
 | Guide | What You'll Learn |
 |-------|-------------------|
 | [Optimization Modalities](modalities.md) | Text, images, PDFs |
-| [Optimize with Templates](templates.md) | Optimize with dynamic prompts |
+| [Optimize with Templates](prompt-templates.md) | Optimize with dynamic prompts |
 | [Configure Evaluators](../evaluators/configure.md) | Customize evaluation strategies |
 | [Advanced Optimization](../advanced/nested-models.md) | Complex scenarios |
 
