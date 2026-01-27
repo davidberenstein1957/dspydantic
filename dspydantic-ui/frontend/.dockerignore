@@ -1,0 +1,8 @@
+node_modules
+npm-debug.log
+dist
+build
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local

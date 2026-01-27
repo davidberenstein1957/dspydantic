@@ -1,0 +1,14 @@
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+sqlalchemy==2.0.23
+pydantic==2.5.0
+python-multipart==0.0.6
+alembic==1.12.1
+psycopg2-binary==2.9.9
+python-dotenv==1.0.0
+litellm>=1.0.0
+jinja2>=3.1.2
+pandas>=2.0.0
+openpyxl>=3.1.0
+pdf2image>=1.16.0
+pillow>=10.0.0
