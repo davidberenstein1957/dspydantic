@@ -1,10 +1,10 @@
 # DSPydantic: Auto-Optimize Your Pydantic Models and Prompts with DSPy
 
-Automatically optimize Pydantic model field descriptions **and prompts** using DSPy. Get better structured data extraction from LLMs with less manual tuning.
+Automatically optimize Pydantic model field descriptions **and prompts** using DSPy. Get better structured data extraction from **text**, **images**, and **PDFs** with less manual tuning.
 
 ## What It Does
 
-Instead of spending hours crafting the perfect field descriptions and prompts for your Pydantic models, DSPydantic uses DSPy's optimization algorithms to automatically find the best descriptions **and prompts** based on your examples. Just provide a few examples, and watch your extraction accuracy improve.
+Instead of spending hours crafting the perfect field descriptions and prompts for your Pydantic models, DSPydantic uses DSPy's optimization algorithms to automatically find the best descriptions **and prompts** based on your examples. Provide examples from **text** (`text="..."`), **images** (`image_path="..."`), or **PDFs** (`pdf_path="..."`)—whatever your input type—and watch your extraction accuracy improve.
 
 ## Core Function: Optimization
 
@@ -16,23 +16,11 @@ Instead of spending hours crafting the perfect field descriptions and prompts fo
 
 After optimization, you get an optimized prompter that efficiently extracts structured data.
 
-## Optimization Flow
-
-```mermaid
-flowchart TD
-    A[Define Pydantic Model] --> B[Create Examples]
-    B --> C[Run Optimization]
-    C --> D{Optimize Descriptions}
-    C --> E{Optimize Prompts}
-    D --> F[Test Variations]
-    E --> F
-    F --> G[Evaluate Performance]
-    G --> H[Select Best]
-    H --> I[Optimized Prompter]
-    I --> J[Extract Structured Data]
-```
+![optimization flow](https://private-user-images.githubusercontent.com/25269220/524957764-c43a2cd0-1c49-417f-9775-5a51c3a6fb12.png?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3Njk1MTYwMTQsIm5iZiI6MTc2OTUxNTcxNCwicGF0aCI6Ii8yNTI2OTIyMC81MjQ5NTc3NjQtYzQzYTJjZDAtMWM0OS00MTdmLTk3NzUtNWE1MWMzYTZmYjEyLnBuZz9YLUFtei1BbGdvcml0aG09QVdTNC1ITUFDLVNIQTI1NiZYLUFtei1DcmVkZW50aWFsPUFLSUFWQ09EWUxTQTUzUFFLNFpBJTJGMjAyNjAxMjclMkZ1cy1lYXN0LTElMkZzMyUyRmF3czRfcmVxdWVzdCZYLUFtei1EYXRlPTIwMjYwMTI3VDEyMDgzNFomWC1BbXotRXhwaXJlcz0zMDAmWC1BbXotU2lnbmF0dXJlPWQ4NDQwMDgxMmY5YTg1NTUzNzQxZWI2MDkzZDM1MWVkNzQ4OTk3YzkzYWEzOWFkNTg0MTAwYTZjYTBmN2EyM2ImWC1BbXotU2lnbmVkSGVhZGVycz1ob3N0In0.eb0ysT9h-ohkhHXlxM1rlr5Kp-LD4ywDcczSDPMbhqk)
 
 ## Quick Start
+
+Examples can use **text**, **images**, or **PDFs**—use the field that matches each input: `text`, `image_path`, or `pdf_path`. The snippet below uses text.
 
 ```python
 from pydantic import BaseModel, Field
@@ -86,15 +74,15 @@ uv pip install dspydantic
 
 ## Key Features
 
+- **Text, images, and PDFs**: Use `Example(text="...")`, `Example(image_path="...")`, or `Example(pdf_path="...")`; mix formats in the same run.
 - **Auto-optimization**: Finds best field descriptions **and prompts** automatically
 - **Unified Prompter class**: Single class for both optimization and extraction
 - **Save & Load**: Save optimized prompters for production deployment
 - **Pre-defined feedback**: Use pre-computed scores for evaluation
-- **Simple input**: Just examples (text/images/PDFs) + your Pydantic model
+- **Simple input**: Examples (text, images, or PDFs) + your Pydantic model
 - **Better output**: Optimized model ready to use with improved accuracy
 - **Prompt templates**: Dynamic prompts with `{placeholders}` for context-aware extraction
 - **Enum & Literal support**: Optimize classification models
-- **Multiple formats**: Text, images, PDFs—works with any input type
 - **Smart defaults**: Auto-selects best optimizer, no configuration needed
 
 ## Guide Progression
@@ -127,11 +115,11 @@ uv pip install dspydantic
 
 ## Getting Started
 
-New to DSPydantic? Start here:
+DSPydantic works with **text**, **images**, and **PDFs**. Choose examples that match your data (documents, screenshots, invoices, etc.). Start here:
 
 1. **[Your First Optimization](guides/optimization/first-optimization.md)** - Quick start with a complete example
-2. **[Core Concepts](core-concepts.md)** - Learn key concepts and workflows
-3. **[Your First Optimization](guides/optimization/first-optimization.md)** - Complete optimization workflow
+2. **[Core Concepts](core-concepts.md)** - Key concepts and workflows
+3. **[Optimization Modalities](guides/optimization/modalities.md)** - Text, images, and PDFs in detail
 
 ## Optimization Guides
 

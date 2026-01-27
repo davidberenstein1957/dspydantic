@@ -60,7 +60,7 @@ DSPydantic automatically **optimizes** Pydantic model field descriptions **and p
 ### 4. Examples
 
 **Examples** are your training data. Each example contains:
-- **Input**: Text, image path, PDF path, or dictionary
+- **Input**: **Text** (`text="..."`), **image** (`image_path="..."` or `image_base64`), **PDF** (`pdf_path="..."`), or a dictionary for template prompts
 - **Expected output**: The correct structured data
 
 **Best practices**:

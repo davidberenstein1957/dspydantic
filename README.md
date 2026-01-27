@@ -4,11 +4,13 @@ Automatically optimize Pydantic model field descriptions and prompts using DSPy.
 
 ## ✨ What It Does
 
-Instead of spending hours crafting the perfect field descriptions for your Pydantic models, DSPydantic uses DSPy's optimization algorithms to automatically find the best descriptions based on your examples. Just provide a few examples, and watch your extraction accuracy improve.
+Instead of spending hours crafting the perfect field descriptions for your Pydantic models, DSPydantic uses DSPy's optimization algorithms to automatically find the best descriptions based on your examples. Provide examples from **text**, **images**, or **PDFs**—whatever your input type—and watch your extraction accuracy improve.
 
 <img width="1541" height="781" alt="Screenshot 2025-12-10 at 17 54 17" src="https://github.com/user-attachments/assets/c43a2cd0-1c49-417f-9775-5a51c3a6fb12" />
 
 ## 🎯 Quick Start
+
+Examples can use **text**, **images**, or **PDFs**—use `text="..."`, `image_path="..."`, or `pdf_path="..."` on each `Example`. The snippet below uses text.
 
 ```python
 import dspy
@@ -86,25 +88,25 @@ uv pip install dspydantic
 
 ## 🌟 Key Features
 
+- **Text, images, and PDFs**: Use `Example(text="...")`, `Example(image_path="...")`, or `Example(pdf_path="...")`; mix formats in the same optimization.
 - **Auto-optimization**: Finds best field descriptions automatically
 - **Unified Prompter class**: Single class for both optimization and extraction
 - **Save & Load**: Save optimized prompters for production deployment
 - **Pre-defined feedback**: Use pre-computed scores for evaluation
-- **Simple input**: Just examples (text/images/PDFs) + your Pydantic model
+- **Simple input**: Examples (text, images, or PDFs) + your Pydantic model
 - **Better output**: Optimized model ready to use with improved accuracy
 - **Template prompts**: Dynamic prompts with `{placeholders}` for context-aware extraction
 - **Enum & Literal support**: Optimize classification models
-- **Multiple formats**: Text, images, PDFs—works with any input type
 - **Smart defaults**: Auto-selects best optimizer, no configuration needed
 - **Backward compatible**: `PydanticOptimizer` still available; `Prompter` is the recommended API
 
 ## 📚 Examples
 
-Check out the [examples directory](examples/) for complete working examples:
+Check out the [examples directory](examples/) for **text**, **image**, and **PDF** workflows:
 
-- **[Veterinary EHR extraction](examples/text_example.py)**: Extract diseases, ICD-11 labels, and anonymized entities from clinical narratives—real-world medical data extraction
-- **[Image classification](examples/image_example.py)**: Classify MNIST handwritten digits using `Literal[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]`—demonstrates vision capabilities and Literal type optimization
-- **[Text classification](examples/imdb_example.py)**: Classify IMDB movie review sentiment with `Literal["positive", "negative"]` and template prompts—shows dynamic prompt formatting with `{review}` placeholders
+- **[Text](examples/text_example.py)**: Veterinary EHR extraction—diseases, ICD-11 labels, anonymized entities from clinical narratives
+- **[Images](examples/image_example.py)**: MNIST digit classification with `Literal[0..9]`—vision and Literal optimization
+- **[Text](examples/imdb_example.py)**: IMDB sentiment with `Literal["positive","negative"]` and template prompts
 
 ## Basic Usage
 
@@ -127,12 +129,18 @@ class ProductInfo(BaseModel):
 
 ### 2. Create Examples
 
-**Simple input format**—just text + expected output:
+**Input formats**: Use **text**, **images**, or **PDFs** per example—one expected output each.
+
+| Input type | Example field | Use case |
+|------------|---------------|----------|
+| **Text** | `text="..."` | Documents, emails, reports, snippets |
+| **Images** | `image_path="path.png"` | Photos, screenshots, diagrams, scanned pages |
+| **PDFs** | `pdf_path="doc.pdf"` | Invoices, forms, multi-page documents |
 
 ```python
 from dspydantic import Example
 
-# Plain text input
+# Text examples
 examples = [
     Example(
         text="iPhone 15 Pro Max with 256GB storage, A17 Pro chip, priced at $1199. Available in titanium and black colors.",
@@ -158,9 +166,9 @@ examples = [
     ),
 ]
 
-# Or use dictionaries for template prompts (see Template Usage section)
-# Or use images: Example(image_path="product.png", expected_output=...)
-# Or use PDFs: Example(pdf_path="catalog.pdf", expected_output=...)
+# Images: Example(image_path="product.png", expected_output=ProductInfo(...))
+# PDFs:   Example(pdf_path="catalog.pdf", expected_output=ProductInfo(...))
+# Mix text, image_path, and pdf_path in the same list.
 ```
 
 ### 3. Optimize
