@@ -101,9 +101,9 @@ uv pip install dspydantic
 
 | Step | Guide | What You'll Learn |
 |------|-------|-------------------|
-| 1 | [Getting Started](getting-started.md) | Quick optimization example |
+| 1 | [Your First Optimization](guides/optimization/first-optimization.md) | Quick optimization example |
 | 2 | [Your First Optimization](guides/optimization/first-optimization.md) | Complete optimization workflow |
-| 3 | [Optimize with Data Types](guides/optimization/text.md) | Data-specific optimization |
+| 3 | [Optimization Modalities](guides/optimization/modalities.md) | Data-specific optimization |
 | 4 | [Configure Evaluators](guides/evaluators/configure.md) | Customize evaluation |
 | 5 | [Advanced Topics](guides/advanced/nested-models.md) | Complex scenarios |
 
@@ -129,7 +129,7 @@ uv pip install dspydantic
 
 New to DSPydantic? Start here:
 
-1. **[Getting Started](getting-started.md)** - Quick start with a complete example
+1. **[Your First Optimization](guides/optimization/first-optimization.md)** - Quick start with a complete example
 2. **[Core Concepts](core-concepts.md)** - Learn key concepts and workflows
 3. **[Your First Optimization](guides/optimization/first-optimization.md)** - Complete optimization workflow
 
@@ -143,9 +143,7 @@ New to DSPydantic? Start here:
 
 Optimize your model with different data types:
 
-- **[Optimize with Text](guides/optimization/text.md)** - Optimize with text documents
-- **[Optimize with Images](guides/optimization/images.md)** - Optimize with image inputs
-- **[Optimize with PDFs](guides/optimization/pdfs.md)** - Optimize with PDF documents
+- **[Optimization Modalities](guides/optimization/modalities.md)** - Text, images, PDFs
 - **[Optimize with Templates](guides/optimization/templates.md)** - Optimize with dynamic prompts
 
 ### Evaluators
@@ -160,14 +158,12 @@ Customize how optimization evaluates results:
 
 - **[Nested Models](guides/advanced/nested-models.md)** - Optimize complex nested structures
 - **[Field Exclusion](guides/advanced/field-exclusion.md)** - Exclude fields from evaluation
-- **[Performance Tuning](guides/advanced/performance.md)** - Optimize optimization performance
 
 ## Production Guides
 
 Deploy optimized models to production:
 
-- **[Save and Load Prompters](guides/production/save-load.md)** - Persist optimized models
-- **[Deploying to Production](guides/production/deployment.md)** - Best practices for deployment
+- **[Save and Load Prompters](guides/advanced/save-load.md)** - Persist optimized models
 
 ## Concepts
 

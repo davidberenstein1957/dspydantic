@@ -63,7 +63,6 @@ data = prompter.predict(text={"review": "Great product!", "category": "electroni
 ## See Also
 
 - [Save and Load Prompters](../../guides/advanced/save-load.md)
-- [Optimize with Text](../../guides/optimization/text.md)
-- [Optimize with Images](../../guides/optimization/images.md)
-- [Optimize with PDFs](../../guides/optimization/pdfs.md)
+- [Optimization Modalities](../../guides/optimization/modalities.md)
+- [Optimize with Templates](../../guides/optimization/templates.md)
 - [Your First Optimization](../../guides/optimization/first-optimization.md)

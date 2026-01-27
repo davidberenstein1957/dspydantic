@@ -97,6 +97,8 @@ nav:
       - With Pydantic Schema: guides/optimization/with-pydantic-schema.md
       - Without Pydantic Schema: guides/optimization/without-pydantic-schema.md
       - Prompt Templates: guides/optimization/prompt-templates.md
+      - Templates: guides/optimization/templates.md
+      - No Model: guides/optimization/no-model.md
     - Evaluators:
       - Configure Evaluators: guides/evaluators/configure.md
       - When to Use Which: guides/evaluators/selection.md

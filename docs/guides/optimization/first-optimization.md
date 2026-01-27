@@ -179,9 +179,7 @@ You've successfully:
 
 | Guide | What You'll Learn |
 |-------|-------------------|
-| [Optimize with Text](text.md) | Optimize with text documents |
-| [Optimize with Images](images.md) | Optimize with image inputs |
-| [Optimize with PDFs](pdfs.md) | Optimize with PDF documents |
+| [Optimization Modalities](modalities.md) | Text, images, PDFs |
 | [Optimize with Templates](templates.md) | Optimize with dynamic prompts |
 | [Configure Evaluators](../evaluators/configure.md) | Customize evaluation strategies |
 | [Advanced Optimization](../advanced/nested-models.md) | Complex scenarios |

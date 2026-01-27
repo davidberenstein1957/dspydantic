@@ -113,10 +113,9 @@ prompter.save("./my_prompter")
 - Version your saved prompters (e.g., `prompter_v1`, `prompter_v2`)
 - Store API keys securely (environment variables, secrets management)
 - Test loaded prompters before deploying to production
-- See [Reference: Prompter](../reference/api/prompter.md) for all options
+- See [Reference: Prompter](../../reference/api/prompter.md) for all options
 
 ## See Also
 
-- [Deploying to Production](deployment.md) - Production deployment guide
 - [Your First Optimization](../optimization/first-optimization.md) - Complete optimization workflow
 - [Reference: Prompter](../../reference/api/prompter.md) - Complete API documentation

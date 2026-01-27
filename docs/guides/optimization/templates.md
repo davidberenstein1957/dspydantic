@@ -159,8 +159,6 @@ The prompter fills the placeholders automatically from the dictionary you provid
 
 ## See Also
 
-- [Optimize with Text](text.md) - Optimize with text documents
-- [Optimize with Images](images.md) - Optimize with image inputs
-- [Optimize with PDFs](pdfs.md) - Optimize with PDF documents
+- [Optimization Modalities](modalities.md) - Text, images, PDFs
 - [Your First Optimization](first-optimization.md) - Complete optimization workflow
 - [Reference: Prompter](../../reference/api/prompter.md) - Complete API documentation
