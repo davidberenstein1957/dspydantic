@@ -11,10 +11,13 @@ Instead of spending hours crafting the perfect field descriptions for your Pydan
 ## 🎯 Quick Start
 
 ```python
+import dspy
 from pydantic import BaseModel, Field
 from typing import Literal
 from dspydantic import Prompter, Example, create_optimized_model
 
+dspy.configure(lm=dspy.LM("openai/gpt-4o", api_key="your-api-key"))
+    
 # 1. Define your model (any Pydantic model works)
 class TransactionRecord(BaseModel):
     broker: str = Field(description="Financial institution or brokerage firm")
@@ -163,6 +166,9 @@ examples = [
 ### 3. Optimize
 
 ```python
+import dspy
+dspy.configure(lm=dspy.LM("openai/gpt-4o", api_key="your-api-key"))
+
 from dspydantic import Prompter
 
 prompter = Prompter(model=ProductInfo)
@@ -183,6 +189,8 @@ result.optimized_instruction_prompt # str | None - optimized instruction prompt
 ```python
 from dspydantic import create_optimized_model
 from openai import OpenAI
+import dspy
+dspy.configure(lm=dspy.LM("openai/gpt-4o", api_key="your-api-key"))
 
 # Create optimized model (drop-in replacement)
 OptimizedProductInfo = create_optimized_model(
@@ -234,6 +242,9 @@ product = OptimizedProductInfo.model_validate_json(
 Use the new `Prompter` class for a unified optimization and extraction workflow:
 
 ```python
+import dspy
+dspy.configure(lm=dspy.LM("openai/gpt-4o", api_key="your-api-key"))
+
 from dspydantic import Prompter, Example
 from pydantic import BaseModel, Field
 
@@ -274,6 +285,9 @@ print(data.price)  # 899.0
 Save optimized prompters for production deployment:
 
 ```python
+import dspy
+dspy.configure(lm=dspy.LM("openai/gpt-4o", api_key="your-api-key"))
+
 # After optimization
 prompter.save("./production_prompter")
 
@@ -298,6 +312,9 @@ data = prompter.extract("New product text")
 Use pre-computed scores for evaluation when you already have ground truth:
 
 ```python
+import dspy
+dspy.configure(lm=dspy.LM("openai/gpt-4o", api_key="your-api-key"))
+
 from dspydantic import Prompter
 from dspydantic.evaluators import PredefinedScoreEvaluator
 
@@ -315,6 +332,9 @@ result = prompter.optimize(
 Works with bool values and numbers too:
 
 ```python
+import dspy
+dspy.configure(lm=dspy.LM("openai/gpt-4o", api_key="your-api-key"))
+
 # Bool values (True=1.0, False=0.0)
 bool_scores = [True, False, True, True]
 evaluator = PredefinedScoreEvaluator(config={"scores": bool_scores})
@@ -327,6 +347,9 @@ evaluator = PredefinedScoreEvaluator(config={"scores": numeric_scores, "max_valu
 **Alternative: Python function that pops from list:**
 
 ```python
+import dspy
+dspy.configure(lm=dspy.LM("openai/gpt-4o", api_key="your-api-key"))
+
 # Create a function that pops scores from a list
 def pop_score_evaluator(example, optimized_descriptions, optimized_system_prompt, optimized_instruction_prompt):
     # Pre-defined scores list (shared state)
@@ -346,6 +369,9 @@ prompter.optimize(examples=examples, evaluate_fn=pop_score_evaluator)
 ### Financial Document Processing
 
 ```python
+import dspy
+dspy.configure(lm=dspy.LM("openai/gpt-4o", api_key="your-api-key"))
+
 class Transaction(BaseModel):
     broker: str = Field(description="Financial institution")
     amount: str = Field(description="Transaction amount")
@@ -367,6 +393,9 @@ examples = [
 ### Healthcare Information Extraction
 
 ```python
+import dspy
+dspy.configure(lm=dspy.LM("openai/gpt-4o", api_key="your-api-key"))
+
 from pydantic import BaseModel, Field
 from dspydantic import Example
 
@@ -398,6 +427,9 @@ examples = [
 ### Legal Contract Analysis
 
 ```python
+import dspy
+dspy.configure(lm=dspy.LM("openai/gpt-4o", api_key="your-api-key"))
+
 from pydantic import BaseModel, Field
 from typing import Literal
 from dspydantic import Example
@@ -430,6 +462,9 @@ examples = [
 Just provide image paths + expected output:
 
 ```python
+import dspy
+dspy.configure(lm=dspy.LM("openai/gpt-4o", api_key="your-api-key"))
+
 from pydantic import BaseModel, Field
 from typing import Literal
 from dspydantic import Example
