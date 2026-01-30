@@ -1,191 +1,275 @@
-# Your First Optimization
+# Getting Started
 
-In this tutorial, we'll walk through a complete optimization workflow. You'll learn how to optimize both field descriptions **and prompts**, and see how to use the optimized results for efficient extraction.
+Get from zero to optimized extraction in 5 minutes.
 
-## What You'll Learn
+---
 
-By the end of this tutorial, you'll understand:
+## Prerequisites
 
-- How to optimize field descriptions
-- How to optimize system and instruction prompts
-- How to interpret optimization results
-- How extraction is the outcome of optimization
-
-## Optimization Workflow
-
-```mermaid
-flowchart TD
-    A[Define Pydantic Model] --> B[Create Examples]
-    B --> C[Run Optimization]
-    C --> D{Optimize Descriptions}
-    C --> E{Optimize Prompts}
-    D --> F[Test Variations]
-    E --> F
-    F --> G[Evaluate Performance]
-    G --> H[Select Best]
-    H --> I[Optimized Prompter]
-    I --> J[Extract Structured Data]
+```bash
+pip install dspydantic
 ```
 
-## Step 1: Define a Model
+Set your API key:
 
-Let's start with a product information extraction model:
+```bash
+export OPENAI_API_KEY="sk-..."
+```
+
+---
+
+## Step 1: Define Your Model
+
+Create a Pydantic model describing what you want to extract:
 
 ```python
 from pydantic import BaseModel, Field
 from typing import Literal
 
-class ProductInfo(BaseModel):
-    name: str = Field(description="Full product name and model")
-    storage: str = Field(description="Storage capacity like 256GB or 1TB")
-    processor: str = Field(description="Chip or processor information")
-    price: str = Field(description="Product price with currency")
-    colors: list[str] = Field(description="Available color options")
-    availability: Literal["in_stock", "pre_order", "sold_out"] = Field(
-        description="Current availability status"
+class JobPosting(BaseModel):
+    """Extract structured data from job postings."""
+    title: str = Field(description="Job title")
+    company: str = Field(description="Company name")
+    location: str = Field(description="Job location")
+    salary_range: str | None = Field(description="Salary range if mentioned")
+    experience_years: str | None = Field(description="Required years of experience")
+    employment_type: Literal["full_time", "part_time", "contract", "internship"] = Field(
+        description="Type of employment"
     )
+    remote: bool = Field(description="Whether remote work is available")
+    skills: list[str] = Field(description="Required skills or technologies")
 ```
 
-Notice that we've provided initial descriptions. These are starting points - DSPydantic will optimize them based on your examples.
+**Tips:**
+
+- Field descriptions guide the LLM—be specific
+- Use `Literal` for categorical fields
+- Use `| None` for optional fields
+- Lists work for multi-value fields
+
+---
 
 ## Step 2: Create Examples
 
-Create examples with input text and expected outputs:
+Provide examples of input text and expected output:
 
 ```python
 from dspydantic import Example
 
 examples = [
     Example(
-        text="iPhone 15 Pro Max with 256GB storage, A17 Pro chip, priced at $1199. Available in titanium and black colors.",
-        expected_output=ProductInfo(
-            name="iPhone 15 Pro Max",
-            storage="256GB",
-            processor="A17 Pro chip",
-            price="$1199",
-            colors=["titanium", "black"],
-            availability="in_stock"
-        )
+        text="""
+        Senior Software Engineer at TechCorp
+        
+        Location: San Francisco, CA (Hybrid - 3 days onsite)
+        Salary: $180,000 - $220,000
+        
+        We're looking for an experienced engineer with 5+ years of experience 
+        in Python and cloud infrastructure. Strong background in AWS, Kubernetes, 
+        and CI/CD pipelines required.
+        
+        Full-time position with competitive benefits.
+        """,
+        expected_output={
+            "title": "Senior Software Engineer",
+            "company": "TechCorp",
+            "location": "San Francisco, CA",
+            "salary_range": "$180,000 - $220,000",
+            "experience_years": "5+ years",
+            "employment_type": "full_time",
+            "remote": True,
+            "skills": ["Python", "AWS", "Kubernetes", "CI/CD"]
+        }
     ),
     Example(
-        text="MacBook Air M3, 512GB SSD, M3 processor, $1299. Colors: space gray, silver. Currently on pre-order.",
-        expected_output=ProductInfo(
-            name="MacBook Air M3",
-            storage="512GB SSD",
-            processor="M3 processor",
-            price="$1299",
-            colors=["space gray", "silver"],
-            availability="pre_order"
-        )
+        text="""
+        Data Analyst Intern - FinanceHub
+        
+        NYC Office, No Remote
+        
+        3-month internship for current students. Must know SQL and Excel.
+        Experience with Tableau is a plus.
+        """,
+        expected_output={
+            "title": "Data Analyst Intern",
+            "company": "FinanceHub",
+            "location": "NYC Office",
+            "salary_range": None,
+            "experience_years": None,
+            "employment_type": "internship",
+            "remote": False,
+            "skills": ["SQL", "Excel", "Tableau"]
+        }
+    ),
+    Example(
+        text="""
+        Contract DevOps Engineer
+        
+        RemoteFirst Inc. | 100% Remote | $85-95/hr
+        
+        6-month contract. Looking for someone with 3 years experience in 
+        Terraform, Docker, and GitHub Actions. Azure certification preferred.
+        """,
+        expected_output={
+            "title": "Contract DevOps Engineer",
+            "company": "RemoteFirst Inc.",
+            "location": "100% Remote",
+            "salary_range": "$85-95/hr",
+            "experience_years": "3 years",
+            "employment_type": "contract",
+            "remote": True,
+            "skills": ["Terraform", "Docker", "GitHub Actions", "Azure"]
+        }
     ),
 ]
 ```
 
-## Step 3: Optimize with Prompts
+**How many examples?**
 
-Create a prompter with initial system and instruction prompts:
+- **5-10**: Good for simple models
+- **10-20**: Recommended for most cases
+- **20+**: For complex schemas or edge cases
+
+---
+
+## Step 3: Optimize
 
 ```python
 from dspydantic import Prompter
 
 prompter = Prompter(
-    model=ProductInfo,
-    model_id="gpt-4o",
+    model=JobPosting,
+    model_id="openai/gpt-4o-mini",
 )
 
-result = prompter.optimize(
-    examples=examples,
-    system_prompt="You are a product information extraction assistant.",
-    instruction_prompt="Extract product details from the description.",
-)
+result = prompter.optimize(examples=examples)
 ```
 
-Notice that we're providing initial prompts. DSPydantic will optimize these **along with** the field descriptions.
+Optimization takes 1-5 minutes depending on example count.
 
-## Step 4: Run Optimization
+---
 
-The optimization runs when you call `prompter.optimize()`. You'll see progress as it runs. The prompter tests different combinations of descriptions **and prompts** to find what works best.
-
-## Step 5: Examine Results
-
-Let's look at what changed:
+## Step 4: Check Results
 
 ```python
-print("Optimized System Prompt:")
-print(result.optimized_system_prompt)
-print("\nOptimized Instruction Prompt:")
-print(result.optimized_instruction_prompt)
-print("\nOptimized Descriptions:")
-for field_path, description in result.optimized_descriptions.items():
-    print(f"  {field_path}: {description}")
-
-print(f"\nBaseline Score: {result.baseline_score:.2%}")
-print(f"Optimized Score: {result.optimized_score:.2%}")
-print(f"Improvement: {result.metrics['improvement']:+.2%}")
+print(f"Before: {result.baseline_score:.0%}")
+print(f"After:  {result.optimized_score:.0%}")
+print(f"API calls: {result.api_calls}")
+print(f"Tokens: {result.total_tokens:,}")
 ```
 
-You should see that both the prompts and descriptions have been optimized for better accuracy.
+**Typical output:**
 
-## Optimization Results
+```
+Before: 72%
+After:  91%
+API calls: 47
+Tokens: 28,450
+```
 
-| Metric | Value | What It Means |
-|--------|-------|---------------|
-| **Baseline Score** | Initial performance | How well your original descriptions and prompts perform |
-| **Optimized Score** | Final performance | How well optimized descriptions and prompts perform |
-| **Improvement** | Gain percentage | The improvement from optimization (typically 10-30%) |
-
-## Before/After Examples
-
-| Field | Before Optimization | After Optimization |
-|-------|-------------------|-------------------|
-| `name` | "Full product name and model" | "Complete product name including brand, model number, and variant designation" |
-| `storage` | "Storage capacity like 256GB or 1TB" | "Storage capacity specification including unit (GB, TB) and type (SSD, HDD) if mentioned" |
-| `price` | "Product price with currency" | "Product price including currency symbol and amount, formatted as shown in the description" |
-
-## Step 6: Use the Optimized Prompter
-
-Now use the optimized prompter to extract data (extraction is the outcome):
+View optimized descriptions:
 
 ```python
-# Extract from new text
-product = prompter.run(
-    "Samsung Galaxy S24 Ultra, 1TB storage, Snapdragon 8 Gen 3 processor, "
-    "$1299. Available in titanium black, titanium gray, and titanium violet. In stock now."
-)
-print(product)
+for field, desc in result.optimized_descriptions.items():
+    print(f"{field}: {desc}")
 ```
 
-The prompter uses the optimized prompts and descriptions automatically.
+---
 
-## What Gets Optimized
+## Step 5: Extract
 
-| Component | What Gets Optimized | Impact |
-|-----------|-------------------|--------|
-| **Field Descriptions** | Individual field descriptions | High - direct extraction accuracy |
-| **System Prompt** | Overall context | Medium - task understanding |
-| **Instruction Prompt** | Task instructions | Medium - extraction guidance |
+Use your optimized prompter:
 
-All three work together synergistically to achieve accurate extraction.
+```python
+job = prompter.run("""
+    ML Engineer - AI Startup
+    
+    Boston, MA or Remote
+    $150K-200K base + equity
+    
+    Join our team building next-gen recommendation systems. 
+    Need 4+ years with PyTorch, transformers, and production ML.
+    Full-time. Start immediately.
+""")
 
-## What You've Learned
+print(job)
+# JobPosting(
+#     title='ML Engineer',
+#     company='AI Startup',
+#     location='Boston, MA or Remote',
+#     salary_range='$150K-200K base + equity',
+#     experience_years='4+ years',
+#     employment_type='full_time',
+#     remote=True,
+#     skills=['PyTorch', 'transformers', 'production ML']
+# )
+```
 
-You've successfully:
+---
 
-1. Optimized both field descriptions **and prompts**
-2. Seen how optimization improves extraction accuracy
-3. Used the optimized results for efficient extraction
+## Step 6: Save for Production
+
+```python
+# Save the optimized prompter
+prompter.save("./job_parser")
+
+# Later, in production:
+prompter = Prompter.load(
+    "./job_parser",
+    model=JobPosting,
+    model_id="openai/gpt-4o-mini"
+)
+
+job = prompter.run(new_posting_text)
+```
+
+---
+
+## Quick Reference
+
+| Method | Purpose |
+|--------|---------|
+| `Prompter(model, model_id)` | Create prompter |
+| `prompter.optimize(examples)` | Optimize with examples |
+| `prompter.run(text)` | Extract from text |
+| `prompter.predict_batch(texts)` | Batch extraction |
+| `prompter.save(path)` | Save optimized state |
+| `Prompter.load(path, model, model_id)` | Load saved prompter |
+
+---
 
 ## Next Steps
 
-| Guide | What You'll Learn |
-|-------|-------------------|
-| [Optimization Modalities](modalities.md) | Text, images, PDFs |
-| [Optimize with Templates](prompt-templates.md) | Optimize with dynamic prompts |
-| [Configure Evaluators](../evaluators/configure.md) | Customize evaluation strategies |
-| [Advanced Optimization](../advanced/nested-models.md) | Complex scenarios |
+| Topic | Guide |
+|-------|-------|
+| Different input types | [Modalities](modalities.md) |
+| Images and PDFs | [Modalities - Images/PDFs](modalities.md#images) |
+| Customize evaluation | [Configure Evaluators](../evaluators/configure.md) |
+| Complex schemas | [Nested Models](../advanced/nested-models.md) |
+| Production deployment | [Save and Load](../advanced/save-load.md) |
+| Integration patterns | [Integration Patterns](../advanced/integration-patterns.md) |
 
-## See Also
+---
 
-- [How Optimization Works](../../concepts/optimization.md) - Deep dive into optimization
-- [Core Concepts](../../core-concepts.md) - Key concepts overview
-- [Reference: Prompter](../../reference/api/prompter.md) - Complete API documentation
+## Troubleshooting
+
+**Low accuracy after optimization?**
+
+- Add more diverse examples
+- Check that examples are correct
+- Try a more capable model (`gpt-4o` vs `gpt-4o-mini`)
+
+**Optimization takes too long?**
+
+- Reduce example count for initial testing
+- Use `gpt-4o-mini` for faster iterations
+
+**API key issues?**
+
+```python
+# Set key explicitly
+import dspy
+dspy.configure(lm=dspy.LM("openai/gpt-4o-mini", api_key="sk-..."))
+```
+
+See [Configure Models](../advanced/configure-models.md) for more options.

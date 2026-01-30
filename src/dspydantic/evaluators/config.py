@@ -1,4 +1,32 @@
-"""Evaluator configuration system for dspydantic."""
+"""Evaluator configuration system for dspydantic.
+
+This module provides the evaluator registry and factory for creating evaluator instances.
+
+Available Evaluators:
+
+| Name | Class | Use Case |
+|------|-------|----------|
+| `exact` | StringCheckEvaluator | Exact string matching (IDs, codes) |
+| `levenshtein` | LevenshteinEvaluator | Fuzzy matching (typos OK) |
+| `text_similarity` | TextSimilarityEvaluator | Semantic similarity via embeddings |
+| `score_judge` | ScoreJudge | LLM-based quality scoring |
+| `label_model_grader` | LabelModelGrader | LLM-based category comparison |
+| `python_code` | PythonCodeEvaluator | Custom evaluation logic |
+| `predefined_score` | PredefinedScoreEvaluator | Pre-computed scores |
+
+Example:
+    >>> from dspydantic.evaluators.config import EvaluatorFactory
+    >>> evaluator = EvaluatorFactory.create("exact")
+    >>> evaluator.evaluate("ABC", "ABC")
+    1.0
+
+    With configuration:
+
+    >>> evaluator = EvaluatorFactory.create({
+    ...     "type": "levenshtein",
+    ...     "config": {"threshold": 0.8}
+    ... })
+"""
 
 from typing import Any, Protocol
 

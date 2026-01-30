@@ -1,8 +1,33 @@
-"""Persistence system for saving and loading Prompter instances."""
+"""Persistence system for saving and loading Prompter instances.
+
+This module handles serialization and deserialization of optimized Prompter state,
+including optimized descriptions, prompts, and model configuration.
+
+Files saved:
+
+- `dspydantic_metadata.json` - Version, model configuration
+- `optimized_state.json` - Optimized descriptions, prompts, demos
+- `model_schema.json` - Pydantic model JSON schema
+
+Example:
+    >>> from dspydantic.persistence import save_prompter_state, load_prompter_state
+    >>> from dspydantic.types import PrompterState
+    >>> state = PrompterState(  # doctest: +SKIP
+    ...     model_schema={"type": "object"},
+    ...     optimized_descriptions={"name": "Full name"},
+    ...     optimized_system_prompt="Extract data",
+    ...     optimized_instruction_prompt=None,
+    ...     model_id="gpt-4o",
+    ...     model_config={},
+    ...     version="0.1",
+    ...     metadata={},
+    ... )
+    >>> save_prompter_state(state, "./my_prompter")  # doctest: +SKIP
+    >>> loaded = load_prompter_state("./my_prompter")  # doctest: +SKIP
+"""
 
 import json
 from pathlib import Path
-from typing import Any
 
 from dspydantic.types import PrompterState
 
@@ -97,7 +122,7 @@ def load_prompter_state(
         if not metadata_path.exists():
             raise PersistenceError(f"Metadata file not found: {metadata_path}")
 
-        with open(metadata_path, "r") as f:
+        with open(metadata_path) as f:
             metadata = json.load(f)
 
         # Check version compatibility
@@ -142,7 +167,7 @@ def load_prompter_state(
         if not optimized_state_path.exists():
             raise PersistenceError(f"Optimized state file not found: {optimized_state_path}")
 
-        with open(optimized_state_path, "r") as f:
+        with open(optimized_state_path) as f:
             optimized_state = json.load(f)
 
         # Load model schema
@@ -150,7 +175,7 @@ def load_prompter_state(
         if not schema_path.exists():
             raise PersistenceError(f"Model schema file not found: {schema_path}")
 
-        with open(schema_path, "r") as f:
+        with open(schema_path) as f:
             model_schema = json.load(f)
 
         # Create PrompterState

@@ -162,3 +162,63 @@ def test_optimizer_metric_function_integration() -> None:
     assert captured_prompts[0][0] == "Optimized system prompt"
     assert captured_prompts[0][1] == "Optimized instruction prompt"
 
+
+@pytest.mark.integration
+@pytest.mark.skipif(
+    not os.getenv("OPENAI_API_KEY"),
+    reason="OPENAI_API_KEY not set, skipping integration test",
+)
+def test_optimizer_judge_without_examples() -> None:
+    """Optimizer with unlabeled examples (expected_output=None) and criteria-based judge."""
+    from typing import Any, Literal
+
+    import dspy
+    from pydantic import BaseModel, Field
+
+    class ReviewSummary(BaseModel):
+        sentiment: Literal["positive", "negative", "neutral"] = Field(
+            description="Overall sentiment"
+        )
+        summary: str = Field(description="One-sentence summary")
+
+    api_key = os.getenv("OPENAI_API_KEY")
+    lm = dspy.LM("openai/gpt-4.1-mini", api_key=api_key)
+    dspy.configure(lm=lm)
+
+    examples = [
+        Example(text="Great film, highly recommend.", expected_output=None),
+        Example(text="Boring and slow.", expected_output=None),
+    ]
+
+    def judge_fn(
+        example: Example,
+        extracted_data: dict[str, Any],
+        optimized_descriptions: dict[str, str],
+        optimized_system_prompt: str | None,
+        optimized_instruction_prompt: str | None,
+    ) -> float:
+        # Simple heuristic judge for testing: reward valid structure
+        if not isinstance(extracted_data, dict):
+            return 0.0
+        if "sentiment" in extracted_data and "summary" in extracted_data:
+            return 0.9
+        return 0.5
+
+    optimizer = PydanticOptimizer(
+        model=ReviewSummary,
+        examples=examples,
+        evaluate_fn=judge_fn,
+        optimizer="miprov2zeroshot",
+        num_threads=1,
+        verbose=False,
+        system_prompt="Extract sentiment and summary.",
+        instruction_prompt="Extract sentiment and summary from the input text.",
+    )
+
+    result = optimizer.optimize()
+
+    assert 0.0 <= result.baseline_score <= 1.0
+    assert 0.0 <= result.optimized_score <= 1.0
+    assert "sentiment" in (result.optimized_descriptions or {})
+    assert "summary" in (result.optimized_descriptions or {})
+

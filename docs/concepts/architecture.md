@@ -158,10 +158,11 @@ Implement `BaseEvaluator` protocol:
 ```python
 class MyEvaluator:
     def __init__(self, config: dict) -> None:
-        ...
+        self.config = config
     
-    def evaluate(self, extracted, expected, ...) -> float:
-        ...
+    def evaluate(self, extracted, expected, input_data=None, field_path=None) -> float:
+        # Your evaluation logic here
+        return 1.0 if extracted == expected else 0.0
 ```
 
 ### Custom Optimizers

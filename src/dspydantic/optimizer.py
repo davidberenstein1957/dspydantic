@@ -467,9 +467,9 @@ class PydanticOptimizer:
                 lm, judge_lm=judge_lm, evaluator_config=evaluator_config_to_use
             )
         elif callable(evaluate_fn):
-            # Check if it's a judge function (takes extracted_data) or regular eval function
-            # We'll handle this in the metric_function wrapper
-            pass
+            # Custom callable is treated as judge when expected_output is None: use default
+            # eval which does extraction then calls this callable with 5 args.
+            evaluate_fn = self._default_evaluate_fn(lm, evaluator_config=evaluator_config_to_use)
 
         def metric_function(
             example: dspy.Example, prediction: dspy.Prediction, trace: Any = None
@@ -1039,6 +1039,19 @@ class PydanticOptimizer:
             improvement = 0.0
             improvement_pct = 0.0
 
+        # Track API usage from DSPy LM history
+        api_calls = 0
+        total_tokens = 0
+        estimated_cost_usd = None
+
+        if hasattr(lm, "history") and lm.history:
+            api_calls = len(lm.history)
+            for call in lm.history:
+                if isinstance(call, dict):
+                    usage = call.get("usage", {})
+                    if isinstance(usage, dict):
+                        total_tokens += usage.get("total_tokens", 0)
+
         # Build result
         result = OptimizationResult(
             optimized_descriptions=optimized_field_descriptions,
@@ -1055,6 +1068,9 @@ class PydanticOptimizer:
             baseline_score=baseline_avg,
             optimized_score=avg_score,
             optimized_demos=optimized_demos,
+            api_calls=api_calls,
+            total_tokens=total_tokens,
+            estimated_cost_usd=estimated_cost_usd,
         )
 
         if self.verbose:
@@ -1072,6 +1088,10 @@ class PydanticOptimizer:
                 print("Using original field descriptions instead.")
             else:
                 print("No change in performance.")
+            if api_calls > 0:
+                print(f"API calls: {api_calls}")
+            if total_tokens > 0:
+                print(f"Total tokens: {total_tokens:,}")
             print(f"{'='*60}\n")
 
         return result

@@ -52,19 +52,31 @@ DSPydantic solves this by:
 
 ### Why DSPy?
 
-DSPy provides proven optimization algorithms that work well for prompt engineering. We leverage:
+DSPy provides proven optimization algorithms that work well for prompt engineering. DSPydantic auto-selects based on your dataset:
 
-- **BootstrapFewShot**: For small datasets (< 20 examples)
-- **BootstrapFewShotWithRandomSearch**: For larger datasets (≥ 20 examples)
-- **MIPROv2**: For advanced optimization needs
+| Examples | Auto-Selected | Reason |
+|----------|---------------|--------|
+| 1-2 | MIPROv2 (zero-shot) | Too few for bootstrapping |
+| 3-19 | BootstrapFewShot | Fast, good for small sets |
+| 20+ | BootstrapFewShotWithRandomSearch | More reliable with more data |
 
 ### Optimization Algorithms
 
-| Algorithm | When Used | Speed | Quality | Examples |
+| Algorithm | API Calls | Speed | Quality | Best For |
 |-----------|-----------|-------|---------|----------|
-| **BootstrapFewShot** | < 20 examples | Fast | Good | Quick iterations |
-| **BootstrapFewShotWithRandomSearch** | ≥ 20 examples | Medium | Better | Production optimization |
-| **MIPROv2** | Advanced needs | Slow | Best | Final optimization |
+| **BootstrapFewShot** | ~N | Fast | Good | Prototyping, small datasets |
+| **BootstrapFewShotWithRandomSearch** | ~N×10 | Medium | Better | Production, reliable results |
+| **MIPROv2 (light)** | ~50 | Medium | Better | Quick production |
+| **MIPROv2 (medium)** | ~200 | Slow | Best | Balanced quality/cost |
+| **MIPROv2 (heavy)** | ~500+ | Slowest | Best | Maximum quality |
+| **COPRO** | ~M×K | Medium | Good | Debugging, understanding prompts |
+| **GEPA** | ~20-100 | Medium | Good | Complex reasoning, interpretable |
+| **BetterTogether** | Sum of all | Slowest | Best | Maximum quality, combines optimizers |
+| **SIMBA** | Variable | Medium | Better | Large datasets (500+), batch |
+| **Ensemble** | N per input | - | Best | Reliability, variance reduction |
+| **BootstrapFinetune** | Variable | Slow | Best | 100+ examples, permanent improvements |
+
+See [Configure Optimizations](../guides/advanced/configure-optimizations.md) for detailed optimizer configuration.
 
 ### Why Field Descriptions?
 

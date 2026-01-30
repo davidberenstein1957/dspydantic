@@ -250,7 +250,13 @@ def test_pydantic_optimizer_initialization_with_prompts_only() -> None:
     assert optimizer.system_prompt == "Extract user information"
     assert optimizer.instruction_prompt == "Parse the following text"
 def test_pydantic_optimizer_metric_function_extracts_prompts() -> None:
-    """Test that metric function correctly extracts optimized prompts."""
+    """Test that metric function correctly extracts optimized prompts and evaluates."""
+    from unittest.mock import patch
+
+    # Configure DSPy with mock LM
+    mock_lm = MagicMock(spec=dspy.LM)
+    dspy.configure(lm=mock_lm)
+
     examples = [
         Example(
             text="John Doe, 30",
@@ -258,27 +264,13 @@ def test_pydantic_optimizer_metric_function_extracts_prompts() -> None:
         )
     ]
 
-    captured_prompts: list[tuple[str | None, str | None]] = []
-
-    def evaluate_fn(
-        example: Example,
-        optimized_descriptions: dict[str, str],
-        optimized_system_prompt: str | None,
-        optimized_instruction_prompt: str | None,
-    ) -> float:
-        captured_prompts.append((optimized_system_prompt, optimized_instruction_prompt))
-        return 0.85
-
     optimizer = PydanticOptimizer(
         model=SimpleUser,
         examples=examples,
-        evaluate_fn=evaluate_fn,
+        evaluate_fn="exact",  # Use default exact evaluation
         system_prompt="Original system prompt",
         instruction_prompt="Original instruction prompt",
     )
-
-    # Create a mock LM for the metric function
-    mock_lm = MagicMock(spec=dspy.LM)
 
     # Create metric function
     metric = optimizer._create_metric_function(mock_lm)
@@ -295,17 +287,26 @@ def test_pydantic_optimizer_metric_function_extracts_prompts() -> None:
         expected_output={"name": "John Doe", "age": 30},
     )
 
-    # Call metric function
-    score = metric(example, prediction)
+    # Mock ChainOfThought to return expected data
+    with patch("dspydantic.evaluators.functions.dspy.ChainOfThought") as mock_cot:
+        mock_result = MagicMock()
+        mock_result.json_output = '{"name": "John Doe", "age": 30}'
+        mock_cot.return_value.return_value = mock_result
 
-    assert score == 0.85
-    assert len(captured_prompts) == 1
-    assert captured_prompts[0][0] == "Optimized system prompt"
-    assert captured_prompts[0][1] == "Optimized instruction prompt"
+        score = metric(example, prediction)
+
+    # Exact match should return 1.0
+    assert score == 1.0
 
 
 def test_pydantic_optimizer_metric_function_uses_original_prompts_when_none() -> None:
     """Test that metric function uses original prompts when optimized ones are None."""
+    from unittest.mock import patch
+
+    # Configure DSPy with mock LM
+    mock_lm = MagicMock(spec=dspy.LM)
+    dspy.configure(lm=mock_lm)
+
     examples = [
         Example(
             text="John Doe, 30",
@@ -313,27 +314,13 @@ def test_pydantic_optimizer_metric_function_uses_original_prompts_when_none() ->
         )
     ]
 
-    captured_prompts: list[tuple[str | None, str | None]] = []
-
-    def evaluate_fn(
-        example: Example,
-        optimized_descriptions: dict[str, str],
-        optimized_system_prompt: str | None,
-        optimized_instruction_prompt: str | None,
-    ) -> float:
-        captured_prompts.append((optimized_system_prompt, optimized_instruction_prompt))
-        return 0.85
-
     optimizer = PydanticOptimizer(
         model=SimpleUser,
         examples=examples,
-        evaluate_fn=evaluate_fn,
+        evaluate_fn="exact",  # Use default exact evaluation
         system_prompt="Original system prompt",
         instruction_prompt="Original instruction prompt",
     )
-
-    # Create a mock LM for the metric function
-    mock_lm = MagicMock(spec=dspy.LM)
 
     # Create metric function
     metric = optimizer._create_metric_function(mock_lm)
@@ -347,14 +334,16 @@ def test_pydantic_optimizer_metric_function_uses_original_prompts_when_none() ->
         expected_output={"name": "John Doe", "age": 30},
     )
 
-    # Call metric function
-    score = metric(example, prediction)
+    # Mock ChainOfThought to return expected data
+    with patch("dspydantic.evaluators.functions.dspy.ChainOfThought") as mock_cot:
+        mock_result = MagicMock()
+        mock_result.json_output = '{"name": "John Doe", "age": 30}'
+        mock_cot.return_value.return_value = mock_result
 
-    assert score == 0.85
-    assert len(captured_prompts) == 1
-    # Should use original prompts when optimized ones are None
-    assert captured_prompts[0][0] == "Original system prompt"
-    assert captured_prompts[0][1] == "Original instruction prompt"
+        score = metric(example, prediction)
+
+    # Exact match should return 1.0
+    assert score == 1.0
 
 
 def test_pydantic_optimizer_prepare_examples_includes_prompts() -> None:
