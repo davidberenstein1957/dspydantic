@@ -12,6 +12,11 @@ Core types and data structures.
       show_root_heading: true
       show_source: true
 
+::: dspydantic.prompter.ExtractionResult
+    options:
+      show_root_heading: true
+      show_source: true
+
 ::: dspydantic.types.PrompterState
     options:
       show_root_heading: true
@@ -37,6 +42,16 @@ The `OptimizationResult` dataclass contains the results of optimization:
 - `metrics`: Dictionary containing optimization metrics
 - `baseline_score`: Baseline score before optimization
 - `optimized_score`: Score after optimization
+- `api_calls`: Total API calls made during optimization
+- `total_tokens`: Total tokens used during optimization
+
+## ExtractionResult
+
+The `ExtractionResult` dataclass is returned by `predict_with_confidence()`:
+
+- `data`: The extracted Pydantic model instance
+- `confidence`: Confidence score (0.0-1.0)
+- `raw_output`: Raw LLM output text (optional)
 
 ## PrompterState
 

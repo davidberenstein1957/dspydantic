@@ -87,19 +87,19 @@ markdown_extensions:
       permalink: true
 
 nav:
-  - Getting Started:
+  - Home:
     - index.md
-    - core-concepts.md
+    - Core Concepts: core-concepts.md
   - Guides:
-    - Your First Optimization: guides/optimization/first-optimization.md
-    - Supported Flows:
-      - Optimization Modalities: guides/optimization/modalities.md
+    - Getting Started: guides/optimization/first-optimization.md
+    - Input Formats:
+      - Modalities Overview: guides/optimization/modalities.md
       - With Pydantic Schema: guides/optimization/with-pydantic-schema.md
       - Without Pydantic Schema: guides/optimization/without-pydantic-schema.md
       - Prompt Templates: guides/optimization/prompt-templates.md
     - Evaluators:
       - Configure Evaluators: guides/evaluators/configure.md
-      - When to Use Which: guides/evaluators/selection.md
+      - Evaluator Selection: guides/evaluators/selection.md
       - Custom Evaluators: guides/evaluators/custom.md
     - Advanced:
       - Configure Optimizations: guides/advanced/configure-optimizations.md
@@ -107,13 +107,14 @@ nav:
       - Nested Models: guides/advanced/nested-models.md
       - Field Exclusion: guides/advanced/field-exclusion.md
       - Save and Load: guides/advanced/save-load.md
-  - Reference:
-    - reference/api/prompter.md
-    - reference/api/types.md
-    - reference/api/extractor.md
-    - reference/api/evaluators.md
-    - Changelog: https://github.com/davidberenstein1957/dspydantic/releases
+      - Integration Patterns: guides/advanced/integration-patterns.md
   - Concepts:
-    - concepts/optimization.md
-    - concepts/evaluators.md
-    - concepts/architecture.md
+    - How Optimization Works: concepts/optimization.md
+    - Understanding Evaluators: concepts/evaluators.md
+    - Architecture: concepts/architecture.md
+  - API Reference:
+    - Prompter: reference/api/prompter.md
+    - Types: reference/api/types.md
+    - Extractor: reference/api/extractor.md
+    - Evaluators: reference/api/evaluators.md
+    - Changelog: https://github.com/davidberenstein1957/dspydantic/releases

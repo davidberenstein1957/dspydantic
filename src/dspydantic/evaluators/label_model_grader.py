@@ -7,13 +7,31 @@ import dspy
 
 
 class LabelModelGrader:
-    """Evaluator that uses an LLM to select a categorical label.
+    """Evaluator that uses an LLM to compare categorical labels.
 
-    Config options:
-        allowed_labels (list[str]): List of valid categorical labels
-        lm (dspy.LM | None): Custom LM instance
-        exact_match_score (float): Score when labels match exactly (default: 1.0)
-        partial_match_score (float): Score for partial matches (default: 0.5)
+    Best for classification fields where labels may have semantic equivalence
+    (e.g., "urgent" vs "high priority") that exact matching would miss.
+
+    Args:
+        config: Configuration dictionary with:
+            - allowed_labels (list[str]): Valid categorical labels (required)
+            - lm (dspy.LM | None): Custom LM instance (default: uses dspy.settings.lm)
+            - exact_match_score (float): Score for exact matches (default: 1.0)
+            - partial_match_score (float): Score for partial matches (default: 0.5)
+
+    Raises:
+        ValueError: If allowed_labels is not provided or empty.
+
+    Example:
+        >>> import dspy  # doctest: +SKIP
+        >>> dspy.configure(lm=dspy.LM("openai/gpt-4o-mini"))  # doctest: +SKIP
+        >>> evaluator = LabelModelGrader(config={  # doctest: +SKIP
+        ...     "allowed_labels": ["positive", "neutral", "negative"]
+        ... })
+        >>> evaluator.evaluate("positive", "positive")  # Exact match  # doctest: +SKIP
+        1.0
+        >>> evaluator.evaluate("good", "positive")  # Semantic match via LLM  # doctest: +SKIP
+        0.5
     """
 
     def __init__(self, config: dict[str, Any]) -> None:

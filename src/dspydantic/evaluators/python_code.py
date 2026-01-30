@@ -6,9 +6,31 @@ from typing import Any
 class PythonCodeEvaluator:
     """Evaluator that uses a callable for custom evaluation logic.
 
-    Config options:
-        function (Callable): Callable/method to use for evaluation.
-            Must accept (extracted, expected, input_data=None, field_path=None) and return float.
+    Use this when built-in evaluators don't match your requirements, such as
+    domain-specific validation rules or complex business logic.
+
+    Args:
+        config: Configuration dictionary with:
+            - function (Callable): Function that takes (extracted, expected, input_data, field_path)
+              and returns a float score between 0.0 and 1.0.
+
+    Raises:
+        ValueError: If 'function' is not provided or not callable.
+        RuntimeError: If the function raises an exception during evaluation.
+
+    Example:
+        >>> def age_evaluator(extracted, expected, input_data=None, field_path=None):
+        ...     if extracted == expected:
+        ...         return 1.0
+        ...     diff = abs(int(extracted) - int(expected))
+        ...     return max(0.0, 1.0 - (diff / 10))
+        >>> evaluator = PythonCodeEvaluator(config={"function": age_evaluator})
+        >>> evaluator.evaluate(30, 30)
+        1.0
+        >>> evaluator.evaluate(28, 30)  # Off by 2 years
+        0.8
+        >>> evaluator.evaluate(20, 30)  # Off by 10 years
+        0.0
     """
 
     def __init__(self, config: dict[str, Any]) -> None:

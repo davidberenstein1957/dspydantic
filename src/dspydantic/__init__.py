@@ -26,7 +26,7 @@ from dspydantic.extractor import (
 )
 from dspydantic.optimizer import PydanticOptimizer
 from dspydantic.persistence import PersistenceError
-from dspydantic.prompter import Prompter
+from dspydantic.prompter import ExtractionResult, Prompter
 from dspydantic.types import Example, OptimizationResult, PrompterState, create_output_model
 from dspydantic.utils import (
     image_to_base64,
@@ -38,6 +38,7 @@ __version__ = "0.1"
 __all__ = [
     "PydanticOptimizer",
     "Prompter",
+    "ExtractionResult",
     "Example",
     "OptimizationResult",
     "PrompterState",

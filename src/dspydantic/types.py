@@ -21,6 +21,9 @@ class OptimizationResult:
         metrics: Dictionary containing optimization metrics (score, improvement, etc.).
         baseline_score: Baseline score before optimization.
         optimized_score: Score after optimization.
+        api_calls: Total number of API calls made during optimization.
+        total_tokens: Total tokens used during optimization (if available).
+        estimated_cost_usd: Estimated cost in USD (if available).
     """
 
     optimized_descriptions: dict[str, str]
@@ -30,6 +33,9 @@ class OptimizationResult:
     baseline_score: float
     optimized_score: float
     optimized_demos: list[dict[str, Any]] | None = None
+    api_calls: int = 0
+    total_tokens: int = 0
+    estimated_cost_usd: float | None = None
 
 
 @dataclass

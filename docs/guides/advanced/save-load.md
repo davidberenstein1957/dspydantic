@@ -1,121 +1,298 @@
-# How to Save and Load Prompters
+# Production Deployment
 
-This guide shows you how to save optimized prompters for production deployment and load them later.
+Save optimized prompters and deploy them to production without re-running optimization.
 
-## Problem
+---
 
-You've optimized a prompter and want to save it for production use without re-running optimization.
-
-## Solution
-
-Use `Prompter.save()` to save and `Prompter.load()` to load optimized prompters.
-
-## Saving a Prompter
-
-After optimization, save the prompter:
+## Save After Optimization
 
 ```python
 from dspydantic import Prompter, Example
+from pydantic import BaseModel, Field
 
-prompter = Prompter(
-    model=Product,
-    model_id="gpt-4o",
-)
+class Invoice(BaseModel):
+    vendor: str = Field(description="Vendor name")
+    total: str = Field(description="Total amount")
 
 # Optimize
+prompter = Prompter(model=Invoice, model_id="openai/gpt-4o-mini")
 result = prompter.optimize(examples=[...])
 
 # Save
-prompter.save("./production_prompter")
+prompter.save("./invoice_prompter")
 ```
 
-This saves:
-- Complete Pydantic model schema
-- All optimized field descriptions
+**What gets saved:**
+
+- Optimized field descriptions
 - Optimized system and instruction prompts
-- Model configuration (model_id, api_base, api_version)
-- Optimization metadata
+- Model configuration
 
-## Loading a Prompter
+**What is NOT saved:**
 
-Load a saved prompter:
+- API keys (security)
+- Examples used for optimization
+
+---
+
+## Load in Production
+
+```python
+import os
+from dspydantic import Prompter
+from myapp.models import Invoice
+
+prompter = Prompter.load(
+    "./invoice_prompter",
+    model=Invoice,
+    model_id="openai/gpt-4o-mini",
+)
+
+# Ready to use
+invoice = prompter.run(document_text)
+```
+
+Set API key via environment variable:
+
+```bash
+export OPENAI_API_KEY="sk-..."
+```
+
+Or pass explicitly:
+
+```python
+prompter = Prompter.load(
+    "./invoice_prompter",
+    model=Invoice,
+    model_id="openai/gpt-4o-mini",
+    api_key=os.getenv("OPENAI_API_KEY"),
+)
+```
+
+---
+
+## Deployment Patterns
+
+### Docker
+
+```dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+# Copy saved prompter
+COPY invoice_prompter/ ./invoice_prompter/
+
+COPY app/ ./app/
+
+CMD ["python", "-m", "app.main"]
+```
+
+```python
+# app/main.py
+from dspydantic import Prompter
+from app.models import Invoice
+
+prompter = Prompter.load(
+    "./invoice_prompter",
+    model=Invoice,
+    model_id="openai/gpt-4o-mini",
+)
+
+def process(text: str) -> Invoice:
+    return prompter.run(text)
+```
+
+### FastAPI Service
+
+```python
+from fastapi import FastAPI
+from dspydantic import Prompter
+from app.models import Invoice
+
+app = FastAPI()
+
+# Load once at startup
+prompter = Prompter.load(
+    "./invoice_prompter",
+    model=Invoice,
+    model_id="openai/gpt-4o-mini",
+)
+
+@app.post("/extract")
+async def extract(text: str):
+    result = prompter.predict_with_confidence(text)
+    return {
+        "data": result.data.model_dump(),
+        "confidence": result.confidence
+    }
+```
+
+### Serverless (AWS Lambda)
 
 ```python
 from dspydantic import Prompter
+from models import Invoice
 
-prompter = Prompter.load(
-    "./production_prompter",
-    model=Product,  # Optional if model schema was saved
-    api_key="your-key",  # Required - API keys are never saved
-)
+# Load during cold start
+prompter = None
+
+def get_prompter():
+    global prompter
+    if prompter is None:
+        prompter = Prompter.load(
+            "/opt/invoice_prompter",  # Layer path
+            model=Invoice,
+            model_id="openai/gpt-4o-mini",
+        )
+    return prompter
+
+def handler(event, context):
+    p = get_prompter()
+    result = p.run(event["text"])
+    return result.model_dump()
 ```
 
-## Using a Loaded Prompter
+---
 
-Use the loaded prompter directly:
+## Versioning
+
+Version your prompters for rollback capability:
 
 ```python
-# Extract data
-data = prompter.run("New product text")
-print(data.name)
-print(data.price)
+import datetime
+
+# Save with version
+version = datetime.datetime.now().strftime("%Y%m%d_%H%M")
+prompter.save(f"./prompters/invoice_v{version}")
+
+# Or semantic versioning
+prompter.save("./prompters/invoice_v1.2.0")
 ```
 
-## Security Note
+Directory structure:
 
-**API keys are NEVER saved** - you must provide them at load time:
-
-```python
-prompter = Prompter.load(
-    "./production_prompter",
-    model=Product,
-    api_key=os.getenv("OPENAI_API_KEY"),  # Provide at load time
-)
+```
+prompters/
+├── invoice_v1.0.0/
+├── invoice_v1.1.0/
+├── invoice_v1.2.0/  # Current
+└── latest -> invoice_v1.2.0/  # Symlink
 ```
 
-## Loading Without Model
+---
 
-If the model schema was saved, you can load without providing the model:
+## Validation Before Deploy
+
+Test loaded prompter before deploying:
 
 ```python
-prompter = Prompter.load(
-    "./production_prompter",
-    api_key="your-key",
-)
+def validate_prompter(prompter: Prompter, test_cases: list[dict]) -> bool:
+    """Validate prompter against test cases."""
+    passed = 0
+    
+    for case in test_cases:
+        result = prompter.run(case["input"])
+        
+        for field, expected in case["expected"].items():
+            actual = getattr(result, field)
+            if actual != expected:
+                print(f"FAIL: {field} - expected {expected}, got {actual}")
+            else:
+                passed += 1
+    
+    total = sum(len(c["expected"]) for c in test_cases)
+    print(f"Passed {passed}/{total} checks")
+    
+    return passed == total
+
+# Usage
+test_cases = [
+    {
+        "input": "Invoice from Acme Corp. Total: $100. Due: March 1.",
+        "expected": {"vendor": "Acme Corp", "total": "$100"}
+    }
+]
+
+prompter = Prompter.load("./invoice_prompter", model=Invoice, model_id="openai/gpt-4o-mini")
+if validate_prompter(prompter, test_cases):
+    print("Ready for deployment")
 ```
 
-However, you'll need to set the model for extraction:
+---
+
+## Model Upgrades
+
+When upgrading your Pydantic model:
+
+**Compatible changes** (safe):
+
+- Adding optional fields with defaults
+- Relaxing field types (str | None → str)
+
+**Incompatible changes** (re-optimize):
+
+- Adding required fields
+- Changing field names
+- Changing field types
 
 ```python
-from my_models import Product
-
-prompter.model = Product
-data = prompter.run("text")
+# Load and verify schema compatibility
+try:
+    prompter = Prompter.load("./invoice_prompter", model=NewInvoice, model_id="openai/gpt-4o-mini")
+    # Test with sample data
+    result = prompter.run(sample_text)
+except Exception as e:
+    print(f"Schema mismatch: {e}")
+    # Re-optimize needed
 ```
 
-## Creating from Optimization Result
+---
 
-You can also create a prompter from an `OptimizationResult`:
+## CI/CD Integration
+
+```yaml
+# .github/workflows/deploy.yml
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install dependencies
+        run: pip install dspydantic pytest
+      
+      - name: Validate prompter
+        run: pytest tests/test_prompter_validation.py
+      
+      - name: Deploy
+        if: success()
+        run: ./deploy.sh
+```
 
 ```python
+# tests/test_prompter_validation.py
 from dspydantic import Prompter
+from app.models import Invoice
 
-prompter = Prompter(model=Product, model_id="gpt-4o")
-result = prompter.optimize(examples=examples)
+def test_prompter_loads():
+    prompter = Prompter.load("./invoice_prompter", model=Invoice, model_id="openai/gpt-4o-mini")
+    assert prompter is not None
 
-# Prompter is already ready to use, but you can save it
-prompter.save("./my_prompter")
+def test_prompter_extracts():
+    prompter = Prompter.load("./invoice_prompter", model=Invoice, model_id="openai/gpt-4o-mini")
+    result = prompter.run("Invoice from Test Corp. Total: $50.")
+    assert result.vendor is not None
+    assert result.total is not None
 ```
 
-## Tips
-
-- Save prompters after successful optimization
-- Version your saved prompters (e.g., `prompter_v1`, `prompter_v2`)
-- Store API keys securely (environment variables, secrets management)
-- Test loaded prompters before deploying to production
-- See [Reference: Prompter](../../reference/api/prompter.md) for all options
+---
 
 ## See Also
 
-- [Your First Optimization](../optimization/first-optimization.md) - Complete optimization workflow
-- [Reference: Prompter](../../reference/api/prompter.md) - Complete API documentation
+- [Integration Patterns](integration-patterns.md) - FastAPI, background processing
+- [Getting Started](../optimization/first-optimization.md) - Optimization workflow
+- [API Reference: Prompter](../../reference/api/prompter.md) - Full documentation

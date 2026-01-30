@@ -6,9 +6,27 @@ from typing import Any
 class StringCheckEvaluator:
     """Evaluator that performs exact string matching.
 
-    Config options:
-        case_sensitive (bool): Whether comparison should be case-sensitive (default: True)
-        strip_whitespace (bool): Whether to strip whitespace before comparison (default: True)
+    Best for IDs, codes, enums, and other values that must match exactly.
+
+    Args:
+        config: Configuration dictionary with options:
+            - case_sensitive (bool): Whether comparison is case-sensitive (default: True)
+            - strip_whitespace (bool): Whether to strip whitespace (default: True)
+
+    Example:
+        >>> evaluator = StringCheckEvaluator(config={})
+        >>> evaluator.evaluate("ABC123", "ABC123")
+        1.0
+        >>> evaluator.evaluate("abc123", "ABC123")  # Case mismatch
+        0.0
+        >>> evaluator.evaluate("  ABC123  ", "ABC123")  # Whitespace stripped
+        1.0
+
+        Case-insensitive matching:
+
+        >>> evaluator = StringCheckEvaluator(config={"case_sensitive": False})
+        >>> evaluator.evaluate("abc123", "ABC123")
+        1.0
     """
 
     def __init__(self, config: dict[str, Any]) -> None:

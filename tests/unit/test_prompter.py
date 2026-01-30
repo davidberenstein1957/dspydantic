@@ -212,7 +212,7 @@ def test_prompter_predict_no_input():
 
     prompter = Prompter(model=User)
 
-    with pytest.raises(ValueError, match="At least one input parameter"):
+    with pytest.raises(ValueError, match="No input provided"):
         prompter.predict()
 
 
@@ -386,3 +386,183 @@ def test_prompter_predict_with_template_prompt():
         assert result.name == "Jane"
         assert result.age == 25
 
+
+@patch("dspydantic.prompter.dspy")
+def test_prompter_run_is_alias_for_predict(mock_dspy):
+    """Test that Prompter.run() is an alias for predict()."""
+    mock_lm = MagicMock()
+    mock_dspy.settings.lm = mock_lm
+    mock_dspy.LM.return_value = mock_lm
+    mock_dspy.configure = MagicMock()
+
+    mock_result = MagicMock()
+    mock_result.json_output = '{"name": "Alice", "age": 30}'
+    mock_extractor = MagicMock()
+    mock_extractor.return_value = mock_result
+    mock_dspy.ChainOfThought.return_value = mock_extractor
+
+    prompter = Prompter(
+        model=User,
+        optimized_descriptions={"name": "User name", "age": "User age"},
+    )
+
+    result = prompter.run(text="Alice, 30")
+
+    assert isinstance(result, BaseModel)
+    assert result.name == "Alice"
+    assert result.age == 30
+
+
+@patch("dspydantic.prompter.dspy")
+def test_prompter_with_model_id_auto_configures_dspy(mock_dspy):
+    """Test that model_id parameter auto-configures DSPy."""
+    mock_lm = MagicMock()
+    mock_dspy.settings.lm = None  # Start unconfigured
+    mock_dspy.LM.return_value = mock_lm
+
+    # Create prompter with model_id
+    Prompter(model=User, model_id="openai/gpt-4o-mini", api_key="test-key")
+
+    # Verify DSPy was configured (cache=False is default)
+    mock_dspy.LM.assert_called_once_with("openai/gpt-4o-mini", api_key="test-key", cache=False)
+    mock_dspy.configure.assert_called_once_with(lm=mock_lm)
+
+
+@patch("dspydantic.prompter.dspy")
+def test_prompter_model_id_skips_if_already_configured(mock_dspy):
+    """Test that model_id doesn't reconfigure if DSPy already configured."""
+    mock_lm = MagicMock()
+    mock_dspy.settings.lm = mock_lm  # Already configured
+
+    # Create prompter with model_id
+    Prompter(model=User, model_id="openai/gpt-4o-mini")
+
+    # Verify DSPy was NOT reconfigured
+    mock_dspy.LM.assert_not_called()
+    mock_dspy.configure.assert_not_called()
+
+
+@patch("dspydantic.prompter.dspy")
+def test_prompter_predict_without_optimization(mock_dspy):
+    """Test that predict() works without prior optimize() call."""
+    mock_lm = MagicMock()
+    mock_dspy.settings.lm = mock_lm
+
+    mock_result = MagicMock()
+    mock_result.json_output = '{"name": "Bob", "age": 35}'
+    mock_extractor = MagicMock()
+    mock_extractor.return_value = mock_result
+    mock_dspy.ChainOfThought.return_value = mock_extractor
+
+    # Create prompter WITHOUT optimization
+    prompter = Prompter(model=User)
+
+    # Predict should work using original field descriptions
+    result = prompter.predict(text="Bob, 35")
+
+    assert isinstance(result, BaseModel)
+    assert result.name == "Bob"
+    assert result.age == 35
+
+
+@patch("dspydantic.prompter.dspy")
+def test_prompter_predict_batch(mock_dspy):
+    """Test batch prediction with multiple inputs."""
+    mock_lm = MagicMock()
+    mock_dspy.settings.lm = mock_lm
+
+    call_count = [0]
+
+    def mock_extractor_call(**kwargs):
+        call_count[0] += 1
+        mock_result = MagicMock()
+        mock_result.json_output = f'{{"name": "User{call_count[0]}", "age": {20 + call_count[0]}}}'
+        return mock_result
+
+    mock_extractor = MagicMock()
+    mock_extractor.side_effect = mock_extractor_call
+    mock_dspy.ChainOfThought.return_value = mock_extractor
+
+    prompter = Prompter(model=User)
+
+    # Batch predict
+    inputs = ["User1, 21", "User2, 22", "User3, 23"]
+    results = prompter.predict_batch(inputs, max_workers=2)
+
+    assert len(results) == 3
+    assert all(isinstance(r, BaseModel) for r in results)
+
+
+def test_prompter_error_message_no_model():
+    """Test helpful error message when model is missing."""
+    # Configure DSPy first
+    lm = dspy.LM("openai/gpt-4.1-mini", api_key="test-key")
+    dspy.configure(lm=lm)
+
+    prompter = Prompter(model=None)
+
+    with pytest.raises(ValueError) as exc_info:
+        prompter.predict(text="test")
+
+    assert "model is required" in str(exc_info.value)
+    assert "Prompter(model=MyModel" in str(exc_info.value)
+
+
+def test_prompter_error_message_no_lm():
+    """Test helpful error message when LM is not configured."""
+    # Reset DSPy config
+    dspy.settings.lm = None
+
+    prompter = Prompter(model=User)
+
+    with pytest.raises(ValueError) as exc_info:
+        prompter.predict(text="test")
+
+    error_msg = str(exc_info.value)
+    assert "No language model configured" in error_msg
+    assert "model_id" in error_msg
+    assert "dspy.configure" in error_msg
+
+
+@patch("dspydantic.prompter.dspy")
+def test_prompter_with_cache_enabled(mock_dspy):
+    """Test that cache parameter configures caching."""
+    mock_lm = MagicMock()
+    mock_dspy.settings.lm = None
+    mock_dspy.LM.return_value = mock_lm
+
+    # Create prompter with cache enabled
+    Prompter(model=User, model_id="openai/gpt-4o-mini", cache=True)
+
+    # Verify LM was created with cache enabled
+    mock_dspy.LM.assert_called_once()
+    call_kwargs = mock_dspy.LM.call_args
+    assert call_kwargs[1].get("cache") is True
+
+
+@patch("dspydantic.prompter.dspy")
+def test_prompter_predict_with_confidence(mock_dspy):
+    """Test predict_with_confidence returns ExtractionResult."""
+    from dspydantic.prompter import ExtractionResult
+
+    mock_lm = MagicMock()
+    mock_dspy.settings.lm = mock_lm
+
+    mock_result = MagicMock()
+    mock_result.json_output = '{"name": "John Doe", "age": 30}'
+    mock_extractor = MagicMock()
+    mock_extractor.return_value = mock_result
+    mock_dspy.ChainOfThought.return_value = mock_extractor
+
+    prompter = Prompter(
+        model=User,
+        optimized_descriptions={"name": "User name", "age": "User age"},
+    )
+
+    result = prompter.predict_with_confidence(text="John Doe is 30 years old")
+
+    assert isinstance(result, ExtractionResult)
+    assert result.data.name == "John Doe"
+    assert result.data.age == 30
+    assert result.confidence is not None
+    assert 0.0 <= result.confidence <= 1.0

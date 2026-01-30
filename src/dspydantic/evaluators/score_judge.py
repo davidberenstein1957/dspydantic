@@ -10,11 +10,31 @@ import dspy
 class ScoreJudge:
     """Evaluator that uses an LLM to assign a numeric score.
 
-    Config options:
-        criteria (str): Scoring criteria/prompt for the LLM
-        lm (dspy.LM | None): Custom LM instance (default: uses optimizer's LM)
-        temperature (float): Temperature for LLM (default: 0.0)
-        system_prompt (str | None): Custom system prompt for judge
+    Uses a language model to evaluate extraction quality when expected values
+    are not available or when semantic judgment is needed.
+
+    Args:
+        config: Configuration dictionary with options:
+            - criteria (str): Scoring criteria/prompt (default: "Rate the quality on a scale of 0-1")
+            - lm (dspy.LM | None): Custom LM instance (default: uses dspy.settings.lm)
+            - temperature (float): LLM temperature (default: 0.0)
+            - system_prompt (str | None): Custom system prompt for the judge
+
+    Raises:
+        ValueError: If no LM is available.
+
+    Example:
+        >>> import dspy  # doctest: +SKIP
+        >>> dspy.configure(lm=dspy.LM("openai/gpt-4o-mini"))  # doctest: +SKIP
+        >>> evaluator = ScoreJudge(config={  # doctest: +SKIP
+        ...     "criteria": "Rate how well the extracted summary captures the key points"
+        ... })
+        >>> evaluator.evaluate(  # doctest: +SKIP
+        ...     extracted="Company reported strong Q3 earnings",
+        ...     expected=None,  # No expected value - judge evaluates quality
+        ...     input_data={"text": "Acme Corp announced record Q3 profits..."}
+        ... )
+        0.85
     """
 
     def __init__(self, config: dict[str, Any]) -> None:

@@ -1,134 +1,204 @@
 # Core Concepts
 
-This page provides a brief overview of key concepts in DSPydantic. Understanding these will help you use the library more effectively.
+DSPydantic automatically optimizes your prompts and field descriptions using your examples. This page explains the key concepts.
 
-## What is DSPydantic?
+---
 
-DSPydantic automatically **optimizes** Pydantic model field descriptions **and prompts** using DSPy's optimization algorithms. Instead of manually tuning descriptions and prompts, you provide examples and DSPydantic finds the best descriptions and prompts for your use case.
+## The Core Idea
 
-**Optimization is the core function** - efficient extraction is the outcome.
+Traditional prompt engineering is trial and error. You write a prompt, test it, tweak it, repeat. DSPydantic automates this:
 
-## Core Concepts Table
+```mermaid
+flowchart LR
+    A[Your Examples] --> B[DSPy Optimizer]
+    B --> C[Better Prompts]
+    C --> D[Higher Accuracy]
+```
 
-| Concept | What It Is | Why It Matters |
-|---------|------------|----------------|
-| **Optimization** | Process of automatically improving field descriptions and prompts | Core function - finds best descriptions and prompts automatically |
-| **Extraction** | Process of getting structured data from inputs | Outcome of optimization - efficient data extraction |
-| **Evaluators** | Measure how well extracted data matches expected data | Guide optimization - determine which variations work best |
-| **Examples** | Training data with input and expected output | Drive optimization - examples determine what gets optimized |
+You provide examples of what you want. DSPydantic finds the prompts that work best.
+
+---
 
 ## Key Concepts
 
-### 1. Optimization (Core Function)
+### Prompter
 
-**Optimization** is the process of automatically improving field descriptions **and prompts** based on your examples. DSPydantic:
+The `Prompter` class is your main interface. It does two things:
 
-- Tests many variations of descriptions and prompts
-- Evaluates each variation against your examples
-- Selects the descriptions and prompts that perform best
-- Iterates to refine the results
+1. **Extract** - Get structured data from text, images, or PDFs
+2. **Optimize** - Improve extraction accuracy using examples
 
-**When to use**: When you have 5-20 examples and want better extraction accuracy.
+```python
+from dspydantic import Prompter
 
-**Learn more**: [How Optimization Works](concepts/optimization.md)
+# Create a prompter
+prompter = Prompter(model=Invoice, model_id="openai/gpt-4o-mini")
 
-### 2. Extraction (Outcome)
+# Extract (works immediately)
+invoice = prompter.run("Invoice #123 from Acme Corp...")
 
-**Extraction** is the process of getting structured data from unstructured inputs (text, images, PDFs). This is the **outcome** of optimization:
-
-- Takes your Pydantic model schema
-- Uses **optimized** descriptions and prompts to guide the LLM
-- Returns structured data matching your model
-
-**Input types**: Text, images (PNG, JPG), PDFs (converted to images)
-
-**Learn more**:
-- [Optimization Modalities](guides/optimization/modalities.md)
-
-### 3. Evaluators
-
-**Evaluators** measure how well extracted data matches expected data. They return scores (0.0 to 1.0) that guide optimization.
-
-**Types**:
-- **Exact match** - For precise values (IDs, codes)
-- **Fuzzy match** - For text with minor variations
-- **Semantic similarity** - For text where meaning matters
-- **LLM-based** - For complex, context-dependent evaluation
-
-**Learn more**: [Understanding Evaluators](concepts/evaluators.md)
-
-### 4. Examples
-
-**Examples** are your training data. Each example contains:
-- **Input**: **Text** (`text="..."`), **image** (`image_path="..."` or `image_base64`), **PDF** (`pdf_path="..."`), or a dictionary for template prompts
-- **Expected output**: The correct structured data
-
-**Best practices**:
-- Use 5-20 examples for good results
-- Cover diverse cases and edge cases
-- Ensure examples are accurate
-
-### 5. Prompter
-
-The **Prompter** class is your main interface. It:
-- **Optimizes** field descriptions and prompts
-- Extracts structured data from inputs (outcome)
-- Saves and loads optimized models
-
-**Usage pattern**:
-1. Create prompter with your model
-2. **Optimize** with examples
-3. Use optimized prompter for extraction
-
-**Learn more**: [API Reference](reference/api/prompter.md)
-
-## Optimization Workflow
-
-```mermaid
-flowchart TD
-    A[Define Pydantic Model] --> B[Create Examples]
-    B --> C[Run Optimization]
-    C --> D{Optimize Descriptions}
-    C --> E{Optimize Prompts}
-    D --> F[Test Variations]
-    E --> F
-    F --> G[Evaluate Performance]
-    G --> H[Select Best]
-    H --> I[Optimized Prompter]
-    I --> J[Extract Structured Data]
+# Optimize (for better accuracy)
+result = prompter.optimize(examples=examples)
 ```
 
-## Optimization vs Manual Tuning
+### Examples
 
-| Aspect | Manual Tuning | Optimization |
-|--------|---------------|--------------|
-| **Field Descriptions** | Write manually, guess what works | Automatically optimized based on examples |
-| **Prompts** | Static, one-size-fits-all | Optimized, context-aware |
-| **Time Investment** | Hours of trial and error | Minutes of automated optimization |
-| **Accuracy** | Varies, depends on expertise | Consistently improved (typically 10-30%) |
-| **Maintenance** | Manual updates needed | Re-optimize with new examples |
-| **Consistency** | Varies by person | Consistent, data-driven |
+Examples are your training data. Each example has:
 
-## What Gets Optimized
+- **Input**: Text, image path, or PDF path
+- **Expected output**: The correct structured data
 
-DSPydantic optimizes **both models AND prompts**:
+```python
+from dspydantic import Example
 
-| Component | What Gets Optimized | Impact |
-|-----------|-------------------|--------|
-| **Field Descriptions** | Individual field descriptions | High - direct extraction accuracy |
-| **System Prompt** | Overall context | Medium - task understanding |
-| **Instruction Prompt** | Task instructions | Medium - extraction guidance |
+example = Example(
+    text="Invoice from Acme Corp. Total: $1,250. Due: March 15, 2024.",
+    expected_output={
+        "vendor": "Acme Corp",
+        "total": "$1,250",
+        "due_date": "March 15, 2024"
+    }
+)
+```
 
-All three work together synergistically to achieve accurate extraction.
+**How many examples?**
 
-## Supported Flows
+| Count | Quality | When to Use |
+|-------|---------|-------------|
+| 5-10 | Good | Quick prototyping |
+| 10-20 | Better | Most use cases |
+| 20+ | Best | Complex schemas, edge cases |
 
-Input formats (text, images, PDFs) are described in [Optimization Modalities](guides/optimization/modalities.md). From there you can use [With Pydantic Schema](guides/optimization/with-pydantic-schema.md) for structured output, [Without Pydantic Schema](guides/optimization/without-pydantic-schema.md) for string output, or [Prompt Templates](guides/optimization/prompt-templates.md) for dynamic `{placeholders}`.
+### Optimization
+
+Optimization is the process of finding better prompts. DSPydantic:
+
+1. Generates variations of your prompts and field descriptions
+2. Tests each variation against your examples
+3. Scores results using evaluators
+4. Selects the best-performing combination
+
+```python
+result = prompter.optimize(examples=examples)
+
+print(f"Before: {result.baseline_score:.0%}")    # e.g., 75%
+print(f"After: {result.optimized_score:.0%}")    # e.g., 92%
+```
+
+**What gets optimized?**
+
+| Component | Example | Impact |
+|-----------|---------|--------|
+| **Field descriptions** | `"Full name"` → `"Person's complete legal name as written"` | High |
+| **System prompt** | `"Extract data"` → `"Extract invoice data accurately..."` | Medium |
+| **Instruction prompt** | `"Get fields"` → `"Extract each field following the schema..."` | Medium |
+
+### Evaluators
+
+Evaluators score how well an extraction matches the expected output. Scores range from 0.0 (no match) to 1.0 (perfect match).
+
+| Evaluator | Best For | Example |
+|-----------|----------|---------|
+| **Exact match** | IDs, codes, enums | `"INV-123"` |
+| **Levenshtein** | Minor typos OK | `"John Doe"` vs `"Jon Doe"` |
+| **Semantic similarity** | Meaning matters | `"CEO"` vs `"Chief Executive"` |
+| **LLM judge** | Complex comparisons | Long text, summaries |
+
+Default behavior is smart: enums use exact match, strings use fuzzy match.
+
+See [Configure Evaluators](guides/evaluators/configure.md) for customization.
+
+---
+
+## Workflow
+
+### Quick Start (No Optimization)
+
+For simple cases, extract immediately:
+
+```python
+prompter = Prompter(model=Invoice, model_id="openai/gpt-4o-mini")
+invoice = prompter.run(document_text)
+```
+
+### With Optimization
+
+For better accuracy, optimize first:
+
+```python
+# 1. Define model
+class Invoice(BaseModel):
+    vendor: str = Field(description="Company name")
+    total: str = Field(description="Amount due")
+
+# 2. Create examples
+examples = [Example(text="...", expected_output={...}), ...]
+
+# 3. Optimize
+prompter = Prompter(model=Invoice, model_id="openai/gpt-4o-mini")
+result = prompter.optimize(examples=examples)
+
+# 4. Extract with optimized prompts
+invoice = prompter.run(new_document)
+```
+
+### Production Deployment
+
+```python
+# After optimization, save
+prompter.save("./invoice_prompter")
+
+# In production, load and use
+prompter = Prompter.load("./invoice_prompter", model=Invoice, model_id="openai/gpt-4o-mini")
+invoice = prompter.run(document)
+```
+
+---
+
+## Input Types
+
+| Type | Example | Use Case |
+|------|---------|----------|
+| **Text** | `Example(text="...")` | Documents, emails, logs |
+| **Image** | `Example(image_path="photo.png")` | Screenshots, receipts |
+| **PDF** | `Example(pdf_path="invoice.pdf")` | Invoices, contracts |
+| **Dictionary** | `Example(text={"field": "value"})` | Template prompts |
+
+All input types work with the same optimization process.
+
+See [Modalities](guides/optimization/modalities.md) for details.
+
+---
+
+## Production Features
+
+| Feature | Method | Use Case |
+|---------|--------|----------|
+| **Batch processing** | `predict_batch()` | Process many documents |
+| **Async** | `apredict()`, `apredict_batch()` | High-throughput pipelines |
+| **Confidence scores** | `predict_with_confidence()` | Flag uncertain extractions |
+| **Caching** | `cache=True` | Reduce API costs |
+| **Save/Load** | `save()`, `load()` | Deploy to production |
+
+```python
+# Batch processing
+invoices = prompter.predict_batch(documents, max_workers=4)
+
+# Async
+invoice = await prompter.apredict(document)
+
+# Confidence scores
+result = prompter.predict_with_confidence(document)
+if result.confidence > 0.9:
+    process(result.data)
+```
+
+---
 
 ## Next Steps
 
-- **[Getting Started](index.md)** - Try your first optimization
-- **[Your First Optimization](guides/optimization/first-optimization.md)** - Complete optimization workflow
-- **[Optimization Modalities](guides/optimization/modalities.md)** - Input formats and flow overview
-- **[Concepts](concepts/optimization.md)** - Deep dives into how things work
-- **[Reference](reference/api/prompter.md)** - Complete API documentation
+- [Getting Started](guides/optimization/first-optimization.md) - Complete tutorial
+- [Modalities](guides/optimization/modalities.md) - Text, images, PDFs
+- [Modalities](guides/optimization/modalities.md) - Text, images, PDFs
+- [Evaluators](guides/evaluators/configure.md) - Customize scoring
+- [API Reference](reference/api/prompter.md) - Full documentation

@@ -6,11 +6,32 @@ from typing import Any
 class TextSimilarityEvaluator:
     """Evaluator that uses embeddings for semantic similarity.
 
-    Config options:
-        model (str): Embedding model name (default: "sentence-transformers/all-MiniLM-L6-v2")
-        provider (str): "sentence-transformers" | "openai" | "custom" (default: "sentence-transformers")
-        api_key (str): API key for OpenAI if using OpenAI embeddings
-        threshold (float): Minimum similarity threshold (0-1, default: 0.0)
+    Best for text where meaning matters more than exact wording. Uses embedding
+    models to compute cosine similarity between extracted and expected values.
+
+    Args:
+        config: Configuration dictionary with options:
+            - model (str): Embedding model (default: "sentence-transformers/all-MiniLM-L6-v2")
+            - provider (str): "sentence-transformers" or "openai" (default: "sentence-transformers")
+            - api_key (str): API key for OpenAI provider
+            - threshold (float): Minimum similarity (0-1, default: 0.0)
+
+    Raises:
+        ImportError: If sentence-transformers is not installed when using that provider.
+
+    Example:
+        >>> # Requires: pip install sentence-transformers
+        >>> evaluator = TextSimilarityEvaluator(config={})  # doctest: +SKIP
+        >>> evaluator.evaluate("CEO", "Chief Executive Officer")  # doctest: +SKIP
+        0.82  # Semantically similar
+
+        With OpenAI embeddings:
+
+        >>> evaluator = TextSimilarityEvaluator(config={  # doctest: +SKIP
+        ...     "provider": "openai",
+        ...     "model": "text-embedding-ada-002",
+        ...     "api_key": "your-key"
+        ... })
     """
 
     def __init__(self, config: dict[str, Any]) -> None:

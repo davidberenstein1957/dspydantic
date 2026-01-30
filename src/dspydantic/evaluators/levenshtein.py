@@ -6,8 +6,30 @@ from typing import Any
 class LevenshteinEvaluator:
     """Evaluator that uses Levenshtein distance for fuzzy string matching.
 
-    Config options:
-        threshold (float): Minimum similarity threshold (0-1, default: 0.0)
+    Useful when extracted values may have minor typos or formatting differences
+    compared to expected values.
+
+    Args:
+        config: Configuration dictionary with options:
+            - threshold (float): Minimum similarity threshold (0-1, default: 0.0).
+              Values below threshold return 0.0.
+
+    Example:
+        >>> evaluator = LevenshteinEvaluator(config={})
+        >>> evaluator.evaluate("John Doe", "John Doe")
+        1.0
+        >>> evaluator.evaluate("Jon Doe", "John Doe")  # Minor typo
+        0.875
+        >>> evaluator.evaluate("Jane Smith", "John Doe")  # Very different
+        0.25
+
+        With threshold:
+
+        >>> evaluator = LevenshteinEvaluator(config={"threshold": 0.8})
+        >>> evaluator.evaluate("Jon Doe", "John Doe")  # Above threshold
+        0.875
+        >>> evaluator.evaluate("Jane", "John")  # Below threshold, returns 0
+        0.0
     """
 
     def __init__(self, config: dict[str, Any]) -> None:
