@@ -74,10 +74,10 @@ prompter = Prompter(model=Review)
 result = prompter.optimize(examples=examples)
 ```
 
-### 4. Extract
+### 4. Run
 
 ```python
-data = prompter.extract("This is the best purchase I've ever made!")
+data = prompter.run("This is the best purchase I've ever made!")
 print(data)
 # Review(sentiment='positive', rating=5, summary='Best purchase ever')
 ```
@@ -104,7 +104,7 @@ examples = [
 
 prompter = Prompter(model=Digit)
 result = prompter.optimize(examples=examples)
-digit = prompter.extract(image_path="new_digit.png")  # Digit(digit=7)
+digit = prompter.run(image_path="new_digit.png")  # Digit(digit=7)
 
 # PDFs
 examples = [
@@ -113,7 +113,7 @@ examples = [
 
 prompter = Prompter(model=Invoice)
 result = prompter.optimize(examples=examples)
-inv = prompter.extract(pdf_path="new_invoice.pdf")  # Invoice(...)
+inv = prompter.run(pdf_path="new_invoice.pdf")  # Invoice(...)
 ```
 
 ## How it works
@@ -122,7 +122,7 @@ inv = prompter.extract(pdf_path="new_invoice.pdf")  # Invoice(...)
 |------|----------------|
 | `model=YourModel` | Schema fields are used for structured extraction |
 | Optimize | Field descriptions and prompts are optimized for accuracy |
-| Extract | `prompter.extract(...)` returns an instance of your model |
+| Run | `prompter.run(...)` returns an instance of your model |
 
 ## What gets optimized
 

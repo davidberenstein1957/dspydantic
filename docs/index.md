@@ -115,22 +115,6 @@ contact = prompter.run(new_document)
 
 ---
 
-## Works Without Labeled Data
-
-Don't have labeled examples? DSPydantic can optimize using an LLM judge:
-
-```python
-result = prompter.optimize(
-    examples=[
-        Example(text="I can't access my account and have a deadline tomorrow!"),
-        Example(text="Love the new dashboard, just wondering about dark mode."),
-    ],
-    use_judge=True
-)
-```
-
-The judge evaluates extraction quality without requiring you to manually label expected outputs.
-
 ---
 
 ## Multi-Modal: Text, Images, PDFs

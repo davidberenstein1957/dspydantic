@@ -1,6 +1,6 @@
 # DSPydantic
 
-m**Stop manually tuning prompts. Let your data optimize them.**
+**Stop manually tuning prompts. Let your data optimize them.**
 
 DSPydantic automatically optimizes your Pydantic model prompts and field descriptions using DSPy. Extract structured data from text, images, and PDFs with higher accuracy and less effort.
 

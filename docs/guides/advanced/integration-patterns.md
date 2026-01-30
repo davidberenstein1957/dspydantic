@@ -65,7 +65,7 @@ class BatchRequest(BaseModel):
 
 @app.post("/extract/batch")
 async def extract_batch(request: BatchRequest):
-    results = await prompter.apredict_batch(request.texts, max_workers=4)
+    results = await prompter.apredict_batch(request.texts, max_concurrency=4)
     return {"results": [r.model_dump() for r in results]}
 ```
 
@@ -123,14 +123,14 @@ async def process_queue(
             batch.append(item)
             
             if len(batch) >= batch_size:
-                results = await prompter.apredict_batch(batch, max_workers=4)
+                results = await prompter.apredict_batch(batch, max_concurrency=4)
                 for item, result in zip(batch, results):
                     yield {"input": item, "output": result.model_dump()}
                 batch = []
                 
         except asyncio.TimeoutError:
             if batch:
-                results = await prompter.apredict_batch(batch, max_workers=4)
+                results = await prompter.apredict_batch(batch, max_concurrency=4)
                 for item, result in zip(batch, results):
                     yield {"input": item, "output": result.model_dump()}
                 batch = []
