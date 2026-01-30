@@ -36,10 +36,10 @@ prompter = Prompter(model=None)
 result = prompter.optimize(examples=examples)
 ```
 
-### 3. Extract
+### 3. Run
 
 ```python
-data = prompter.extract("The film was amazing!")
+data = prompter.run("The film was amazing!")
 print(data.output)  # e.g. "positive"
 ```
 
@@ -62,8 +62,8 @@ examples = [
 prompter = Prompter(model=None)
 result = prompter.optimize(examples=examples)
 
-digit = prompter.extract(image_path="new_digit.png")   # digit.output
-inv   = prompter.extract(pdf_path="new_invoice.pdf")  # inv.output
+digit = prompter.run(image_path="new_digit.png")   # digit.output
+inv   = prompter.run(pdf_path="new_invoice.pdf")  # inv.output
 ```
 
 ## How it works
@@ -72,7 +72,7 @@ inv   = prompter.extract(pdf_path="new_invoice.pdf")  # inv.output
 |------|----------------|
 | `model=None` | A minimal schema with one field `"output"` (str) is used |
 | Optimize | That field’s description and the prompts are optimized for string extraction |
-| Extract | `prompter.extract(...)` returns an object whose `.output` is the string |
+| Run | `prompter.run(...)` returns an object whose `.output` is the string |
 
 ## What gets optimized
 

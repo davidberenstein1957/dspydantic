@@ -34,7 +34,7 @@ from dspydantic.utils import (
     prepare_input_data,
 )
 
-__version__ = "0.1"
+__version__ = "0.1.1"
 __all__ = [
     "PydanticOptimizer",
     "Prompter",
