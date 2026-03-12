@@ -4,22 +4,29 @@ This page explains how DSPydantic optimization works, why it's effective, and th
 
 ## How Optimization Works
 
-DSPydantic uses DSPy's optimization algorithms to automatically improve field descriptions **and prompts**. The process works by:
+DSPydantic uses DSPy's optimization algorithms to automatically improve field descriptions **and prompts**. By default, optimization runs in **sequential mode** (see below), which reduces the search space and often yields better results.
 
-1. **Testing Variations**: The prompter generates variations of field descriptions **and prompts**
-2. **Evaluating Performance**: Each variation is tested against your examples using an evaluation function
-3. **Selecting Best**: The prompter selects the descriptions and prompts that perform best
-4. **Iterating**: The process repeats, refining the selections until convergence
+### Sequential Mode (Default)
+
+When `sequential=True` (default):
+
+1. **Phase 1 – Fields**: Each field description is optimized independently, ordered by nesting depth (deepest first). All other fields stay fixed. This minimizes the search space per run.
+2. **Phase 2 – Prompts**: With field descriptions fixed, the system prompt and instruction prompt are optimized one at a time.
+3. **Rolling baseline**: Each improvement becomes the baseline for the next step.
+
+### Single-Pass Mode (Legacy)
+
+When `sequential=False`, all field descriptions and prompts are optimized together in one DSPy run. Use this for backward compatibility or when you prefer the original behavior.
 
 ## Optimization Flow
 
 ```mermaid
 flowchart TD
     A[User Examples] --> B[Prompter]
-    B --> C[DSPy Optimizer]
-    C --> D[Generate Variations]
-    D --> E[Test Descriptions]
-    D --> F[Test Prompts]
+    B --> C{Sequential?}
+    C -->|Yes| D[Phase 1: Fields deepest-first]
+    D --> E[Phase 2: Prompts]
+    C -->|No| F[Single-Pass: All at once]
     E --> G[Evaluators]
     F --> G
     G --> H[Score Results]
@@ -155,6 +162,8 @@ The optimized descriptions and prompts are tailored to your use case. They may:
 
 ## Further Reading
 
+- [Configure Optimizations](../guides/advanced/configure-optimizations.md) - Sequential mode, optimizers, threads
+- [Field Inclusion & Exclusion](../guides/advanced/field-exclusion.md) - Focus on specific fields
 - [Architecture](architecture.md) - System design details
 - [Understanding Evaluators](evaluators.md) - How evaluation works
 - [Your First Optimization](../guides/optimization/first-optimization.md) - Complete workflow

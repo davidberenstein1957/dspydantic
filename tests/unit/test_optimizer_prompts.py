@@ -9,6 +9,20 @@ from dspydantic import Example, OptimizationResult, PydanticOptimizer
 from dspydantic.module import PydanticOptimizerModule
 
 
+class Address(BaseModel):
+    """Address model for testing."""
+
+    street: str = Field(description="Street address")
+    city: str = Field(description="City name")
+
+
+class NestedUser(BaseModel):
+    """User model with nested address."""
+
+    name: str = Field(description="User's full name")
+    address: Address = Field(description="User address")
+
+
 class SimpleUser(BaseModel):
     """Simple user model for testing."""
 
@@ -156,6 +170,78 @@ def test_pydantic_optimizer_initialization_with_system_prompt() -> None:
 
     assert optimizer.system_prompt == "Extract user information"
     assert optimizer.instruction_prompt is None
+
+
+def test_pydantic_optimizer_include_fields() -> None:
+    """Test that include_fields filters which fields are optimized."""
+    examples = [
+        Example(
+            text="John Doe, 123 Main St, Boston",
+            expected_output={
+                "name": "John Doe",
+                "address": {"street": "123 Main St", "city": "Boston"},
+            },
+        )
+    ]
+
+    def evaluate_fn(
+        example: Example,
+        optimized_descriptions: dict[str, str],
+        optimized_system_prompt: str | None,
+        optimized_instruction_prompt: str | None,
+    ) -> float:
+        return 0.9
+
+    optimizer = PydanticOptimizer(
+        model=NestedUser,
+        examples=examples,
+        evaluate_fn=evaluate_fn,
+        include_fields=["address"],
+    )
+
+    effective = optimizer._get_effective_fields()
+    assert "address.street" in effective
+    assert "address.city" in effective
+    assert "name" not in effective
+
+    sorted_fields = optimizer._sort_fields_by_depth()
+    assert "address.street" in sorted_fields
+    assert "address.city" in sorted_fields
+    assert "name" not in sorted_fields
+
+
+def test_pydantic_optimizer_include_and_exclude_fields() -> None:
+    """Test that exclude_fields removes from include_fields."""
+    examples = [
+        Example(
+            text="John Doe, 123 Main St, Boston",
+            expected_output={
+                "name": "John Doe",
+                "address": {"street": "123 Main St", "city": "Boston"},
+            },
+        )
+    ]
+
+    def evaluate_fn(
+        example: Example,
+        optimized_descriptions: dict[str, str],
+        optimized_system_prompt: str | None,
+        optimized_instruction_prompt: str | None,
+    ) -> float:
+        return 0.9
+
+    optimizer = PydanticOptimizer(
+        model=NestedUser,
+        examples=examples,
+        evaluate_fn=evaluate_fn,
+        include_fields=["address"],
+        exclude_fields=["address.city"],
+    )
+
+    effective = optimizer._get_effective_fields()
+    assert "address.street" in effective
+    assert "address.city" not in effective
+    assert "name" not in effective
 
 
 def test_pydantic_optimizer_initialization_with_instruction_prompt() -> None:

@@ -11,6 +11,50 @@ This guide covers how to configure optimization parameters, choose the right DSP
 | Examples | - | 10-20 | Quality |
 | Threads | 4 | 4-8 | Speed |
 | Optimizer | Auto | Based on dataset | Quality/Cost |
+| Sequential | True | True | Smaller search space per run |
+| include_fields | None | As needed | Focus optimization |
+| exclude_fields | None | As needed | Skip metadata in scoring |
+
+---
+
+## Sequential vs Single-Pass Optimization
+
+By default, DSPydantic uses **sequential mode** (`sequential=True`):
+
+1. **Phase 1**: Optimize each field description independently, deepest-nested first. Each run has a minimal search space.
+2. **Phase 2**: Optimize system and instruction prompts with field descriptions fixed.
+
+This often yields better results than optimizing everything at once. Use `sequential=False` for the legacy single-pass behavior (all fields and prompts in one run).
+
+```python
+# Default: sequential (recommended)
+result = prompter.optimize(examples=examples)
+
+# Legacy: single-pass
+result = prompter.optimize(examples=examples, sequential=False)
+```
+
+---
+
+## Field Inclusion and Exclusion
+
+Restrict which fields are optimized and scored:
+
+```python
+# Only optimize specific fields (reduces time and API costs)
+result = prompter.optimize(
+    examples=examples,
+    include_fields=["address", "total"],
+)
+
+# Exclude fields from scoring (still extracted)
+result = prompter.optimize(
+    examples=examples,
+    exclude_fields=["metadata", "timestamp"],
+)
+```
+
+See [Field Inclusion & Exclusion](field-exclusion.md) for details.
 
 ---
 

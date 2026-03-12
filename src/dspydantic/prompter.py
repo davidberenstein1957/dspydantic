@@ -264,6 +264,7 @@ class Prompter:
         num_threads: int = 4,
         verbose: bool = False,
         exclude_fields: list[str] | None = None,
+        include_fields: list[str] | None = None,
         evaluator_config: dict[str, Any] | None = None,
         sequential: bool = True,
         **kwargs: Any,
@@ -283,6 +284,7 @@ class Prompter:
             num_threads: Number of threads (default: 4).
             verbose: Print progress (default: False).
             exclude_fields: Field names to exclude from evaluation.
+            include_fields: Field names to include (only these are optimized/scored).
             evaluator_config: Evaluator configuration dict.
             sequential: If True (default), optimize each field independently
                 (deepest-first), then prompts. If False, single-pass optimization.
@@ -302,6 +304,7 @@ class Prompter:
             optimizer=optimizer,
             train_split=train_split,
             exclude_fields=exclude_fields,
+            include_fields=include_fields,
             evaluator_config=evaluator_config,
             sequential=sequential,
             **kwargs,

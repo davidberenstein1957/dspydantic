@@ -190,6 +190,7 @@ class PydanticOptimizer:
         train_split: float = 0.8,
         optimizer_kwargs: dict[str, Any] | None = None,
         exclude_fields: list[str] | None = None,
+        include_fields: list[str] | None = None,
         evaluator_config: dict[str, Any] | None = None,
         sequential: bool = True,
     ) -> None:
@@ -240,6 +241,10 @@ class PydanticOptimizer:
                 Fields matching these paths (or starting with them) will be excluded
                 from scoring. Only applies when using default evaluation functions
                 (not custom evaluate_fn).
+            include_fields: Optional list of field paths to include in optimization
+                and evaluation. When set, only these fields (and nested fields
+                under them) are optimized and scored. Mutually filters with
+                exclude_fields when both are set.
             evaluator_config: Optional evaluator configuration dict with "default" and
                 "field_overrides" keys. If provided, uses configured evaluators instead
                 of evaluate_fn/metric. Supports string names, config dicts, and custom classes.
@@ -277,6 +282,7 @@ class PydanticOptimizer:
         self.examples = examples
         self.evaluate_fn = evaluate_fn
         self.exclude_fields = exclude_fields
+        self.include_fields = include_fields
         self.evaluator_config = evaluator_config
         self.system_prompt = system_prompt
         self.instruction_prompt = instruction_prompt
@@ -366,14 +372,43 @@ class PydanticOptimizer:
 
         return mapping
 
+    def _get_effective_fields(self) -> set[str]:
+        """Return field paths to optimize after applying include/exclude filters.
+
+        Returns:
+            Set of field paths. If include_fields is set, only those (and nested)
+            are included. exclude_fields removes from the result.
+        """
+        all_fields = set(self.field_descriptions.keys())
+        if self.include_fields is not None:
+            included = set()
+            for path in self.include_fields:
+                if path in all_fields:
+                    included.add(path)
+                for f in all_fields:
+                    if f.startswith(f"{path}."):
+                        included.add(f)
+            all_fields = included
+        if self.exclude_fields is not None:
+            excluded = set()
+            for path in self.exclude_fields:
+                if path in all_fields:
+                    excluded.add(path)
+                for f in all_fields:
+                    if f.startswith(f"{path}."):
+                        excluded.add(f)
+            all_fields -= excluded
+        return all_fields
+
     def _sort_fields_by_depth(self) -> list[str]:
         """Return field paths sorted deepest-first (most dots first).
 
         Returns:
             List of field paths ordered by nesting depth, deepest first.
         """
+        effective = self._get_effective_fields()
         return sorted(
-            self.field_descriptions.keys(),
+            (p for p in self.field_descriptions.keys() if p in effective),
             key=lambda p: p.count("."),
             reverse=True,
         )
@@ -439,6 +474,7 @@ class PydanticOptimizer:
             judge_lm=judge_lm,
             custom_judge_fn=custom_judge_fn,
             exclude_fields=self.exclude_fields,
+            include_fields=self.include_fields,
             evaluator_config=evaluator_config,
         )
 
@@ -1216,7 +1252,15 @@ class PydanticOptimizer:
             print(f"Model: {self.model.__name__}")
             print(f"Optimizer: {self.optimizer_type.upper()}")
             print(f"Examples: {len(self.examples)}")
-            print(f"Fields to optimize: {len(self.field_descriptions)}")
+            effective_count = len(self._get_effective_fields())
+            print(
+                f"Fields to optimize: {effective_count}"
+                + (
+                    f" (of {len(self.field_descriptions)} total)"
+                    if effective_count != len(self.field_descriptions)
+                    else ""
+                )
+            )
             if self.field_descriptions:
                 print("\nInitial field descriptions (set during initialization):")
                 for field_path, description in self.field_descriptions.items():
@@ -1233,9 +1277,12 @@ class PydanticOptimizer:
         lm = dspy.settings.lm
         evaluate_fn = self._resolve_evaluate_fn(lm)
 
-        # Create DSPy program with field descriptions, types, and prompts
+        effective = self._get_effective_fields()
+        effective_descriptions = {
+            k: v for k, v in self.field_descriptions.items() if k in effective
+        }
         program = PydanticOptimizerModule(
-            field_descriptions=self.field_descriptions,
+            field_descriptions=effective_descriptions or self.field_descriptions,
             field_types=self.field_types,
             has_system_prompt=self.system_prompt is not None,
             has_instruction_prompt=self.instruction_prompt is not None,
@@ -1362,9 +1409,8 @@ class PydanticOptimizer:
         # Test the optimized program to get optimized values
         test_result = optimized_program(**program_args)
 
-        # Extract optimized field descriptions
-        optimized_field_descriptions: dict[str, str] = {}
-        for field_path in self.field_descriptions.keys():
+        optimized_field_descriptions = dict(self.field_descriptions)
+        for field_path in effective_descriptions.keys():
             attr_name = f"optimized_{field_path}"
             if hasattr(test_result, attr_name):
                 optimized_field_descriptions[field_path] = getattr(

@@ -105,7 +105,7 @@ nav:
       - Configure Optimizations: guides/advanced/configure-optimizations.md
       - Configure Models: guides/advanced/configure-models.md
       - Nested Models: guides/advanced/nested-models.md
-      - Field Exclusion: guides/advanced/field-exclusion.md
+      - Field Inclusion & Exclusion: guides/advanced/field-exclusion.md
       - Save and Load: guides/advanced/save-load.md
       - Integration Patterns: guides/advanced/integration-patterns.md
   - Concepts:

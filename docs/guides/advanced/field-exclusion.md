@@ -1,6 +1,43 @@
-# Field Exclusion
+# Field Inclusion & Exclusion
 
-This guide shows you how to exclude certain fields from affecting the optimization score. Excluded fields are still extracted but don't influence optimization.
+Control which fields are optimized and scored. Use `include_fields` to focus on specific fields, or `exclude_fields` to skip fields that shouldn't affect the score.
+
+## include_fields: Optimize Only These Fields
+
+When you have many fields but want to optimize a subset first:
+
+```python
+result = prompter.optimize(
+    examples=examples,
+    include_fields=["address", "total"],  # Only these (and nested) are optimized
+)
+```
+
+- **Exact match**: `include_fields=["name"]` includes `name`
+- **Prefix match**: `include_fields=["address"]` includes `address`, `address.street`, `address.city`, etc.
+- Reduces optimization time and API costs when you have many fields
+- Non-included fields keep their original descriptions
+
+## exclude_fields: Skip Fields in Scoring
+
+Exclude fields when they shouldn't influence optimization but should still be extracted:
+
+```python
+result = prompter.optimize(
+    examples=examples,
+    exclude_fields=["metadata", "timestamp"],
+)
+```
+
+Excluded fields are still extracted but don't affect the optimization score.
+
+## When to Use Each
+
+| Use Case | Parameter | Example |
+|----------|-----------|---------|
+| **Focus on critical fields** | `include_fields` | `["address", "total"]` |
+| **Skip metadata in scoring** | `exclude_fields` | `["metadata", "timestamp"]` |
+| **Combine both** | Both | Include `address`, exclude `address.internal_id` |
 
 ## When to Exclude Fields
 
@@ -10,15 +47,13 @@ This guide shows you how to exclude certain fields from affecting the optimizati
 | **Non-critical** | internal notes | Reduce noise in scoring |
 | **Computed** | derived values | Not extracted from input |
 
-Exclude fields when they shouldn't influence optimization but should still be extracted.
-
 ## Problem
 
-You have fields like metadata or timestamps that shouldn't affect optimization scoring, but you still want them extracted.
+You have fields like metadata or timestamps that shouldn't affect optimization scoring, but you still want them extracted. Or you have many fields and want to optimize only the most important ones first.
 
 ## Solution
 
-Use `exclude_fields` parameter to exclude fields from evaluation while still extracting them. This allows optimization to focus on fields that matter.
+Use `exclude_fields` to skip fields from evaluation, or `include_fields` to restrict optimization to specific fields.
 
 ## Steps
 
@@ -38,7 +73,7 @@ class PatientRecord(BaseModel):
     timestamp: str = Field(description="Record timestamp")  # Not important for evaluation
 ```
 
-### 2. Exclude Fields from Evaluation
+### 2. Include or Exclude Fields
 
 ```python
 from dspydantic import Prompter
@@ -50,13 +85,27 @@ dspy.configure(lm=lm)
 
 prompter = Prompter(model=PatientRecord)
 
+# Option A: Exclude fields from scoring (still extracted)
 result = prompter.optimize(
     examples=examples,
-    exclude_fields=["metadata", "timestamp"],  # These won't affect scoring
+    exclude_fields=["metadata", "timestamp"],
+)
+
+# Option B: Only optimize specific fields
+result = prompter.optimize(
+    examples=examples,
+    include_fields=["patient_name", "urgency", "diagnosis"],
+)
+
+# Option C: Combine both
+result = prompter.optimize(
+    examples=examples,
+    include_fields=["patient_name", "diagnosis"],
+    exclude_fields=["metadata"],
 )
 ```
 
-The optimization process will optimize field descriptions **and prompts** for all fields except the excluded ones.
+The optimization process optimizes field descriptions **and prompts** for the effective field set (included minus excluded).
 
 ### 3. Use Optimized Prompter
 
@@ -71,22 +120,23 @@ print(record.metadata)     # Still extracted, but not optimized
 
 ## Impact on Optimization
 
-| Aspect | With Exclusion | Without Exclusion |
-|--------|---------------|-------------------|
-| **Fields Optimized** | Only included fields | All fields |
-| **Optimization Focus** | Critical fields only | All fields equally |
-| **Score Calculation** | Based on included fields | Based on all fields |
-| **Extraction** | All fields extracted | All fields extracted |
+| Aspect | include_fields | exclude_fields | Neither |
+|--------|----------------|----------------|---------|
+| **Fields Optimized** | Only specified (and nested) | All except specified | All fields |
+| **Score Calculation** | Based on included only | Based on all except excluded | All fields |
+| **Extraction** | All fields extracted | All fields extracted | All fields extracted |
 
 ## Tips
 
+- Use `include_fields` to reduce optimization time when you have many fields
 - Only exclude fields that truly don't matter for optimization
 - Excluded fields are still extracted by the model
-- Use this sparingly - most fields should be optimized
+- When both are set, `exclude_fields` removes from the `include_fields` set
 - See [Reference: Prompter](../../reference/api/prompter.md) for details
 
 ## See Also
 
+- [Configure Optimizations](configure-optimizations.md) - Sequential mode, optimizers
 - [Nested Models](nested-models.md) - Optimize complex structures
 - [Your First Optimization](../optimization/first-optimization.md) - Complete optimization workflow
 - [Reference: Prompter](../../reference/api/prompter.md) - Complete API documentation

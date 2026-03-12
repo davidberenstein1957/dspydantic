@@ -203,7 +203,7 @@ else:
 ### Advanced
 
 - [Nested Models](guides/advanced/nested-models.md) - Complex schemas
-- [Field Exclusion](guides/advanced/field-exclusion.md) - Skip fields in evaluation
+- [Field Inclusion & Exclusion](guides/advanced/field-exclusion.md) - Focus optimization on specific fields
 - [Save and Load](guides/advanced/save-load.md) - Production deployment
 
 ---

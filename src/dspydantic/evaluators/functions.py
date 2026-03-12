@@ -170,6 +170,7 @@ def default_evaluate_fn(
     judge_lm: dspy.LM | None = None,
     custom_judge_fn: Callable[..., float] | None = None,
     exclude_fields: list[str] | None = None,
+    include_fields: list[str] | None = None,
     evaluator_config: dict[str, Any] | None = None,
 ) -> Callable[[Example, dict[str, str], str | None, str | None], float]:
     """Create a default evaluation function that uses the LLM for structured extraction.
@@ -190,6 +191,8 @@ def default_evaluate_fn(
             Field paths use dot notation for nested fields
             (e.g., ["address.street", "metadata"]).
             Fields matching these paths (or starting with them) are excluded.
+        include_fields: Optional list of field paths to include in evaluation.
+            When set, only these fields (and nested under them) are scored.
         evaluator_config: Optional evaluator configuration dict with "default" and "field_overrides".
             If provided, uses configured evaluators instead of metric parameter.
 
@@ -511,7 +514,16 @@ def default_evaluate_fn(
             if is_leaf:
                 leaf_field_paths.append(field_path)
 
-        # Filter out excluded fields
+        if include_fields:
+            included_set = set(include_fields)
+            filtered = []
+            for field_path in leaf_field_paths:
+                for inc_path in included_set:
+                    if field_path == inc_path or field_path.startswith(f"{inc_path}."):
+                        filtered.append(field_path)
+                        break
+            leaf_field_paths = filtered
+
         if exclude_fields:
             excluded_set = set(exclude_fields)
             filtered_leaf_field_paths = []

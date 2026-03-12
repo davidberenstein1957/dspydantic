@@ -87,6 +87,8 @@ result = prompter.optimize(examples=examples)
 print(f"Accuracy: {result.baseline_score:.0%} → {result.optimized_score:.0%}")
 ```
 
+By default, optimization uses **sequential mode**: each field description is optimized independently (deepest-nested first), then prompts. This reduces the search space and often yields better results.
+
 ### Deploy to Production
 
 ```python
@@ -123,6 +125,28 @@ Example(image_path="receipt.png", expected_output={...})
 Example(pdf_path="contract.pdf", expected_output={...})
 ```
 
+## Optimization Options
+
+```python
+# Focus on specific fields only
+result = prompter.optimize(
+    examples=examples,
+    include_fields=["address", "total"],  # Only optimize these
+)
+
+# Exclude fields from scoring (still extracted)
+result = prompter.optimize(
+    examples=examples,
+    exclude_fields=["metadata", "timestamp"],
+)
+
+# Single-pass mode (all fields at once, legacy behavior)
+result = prompter.optimize(
+    examples=examples,
+    sequential=False,
+)
+```
+
 ## Production Features
 
 ```python
@@ -146,8 +170,8 @@ if result.confidence > 0.9:
 Full documentation at [davidberenstein1957.github.io/dspydantic](https://davidberenstein1957.github.io/dspydantic/)
 
 - [Getting Started](https://davidberenstein1957.github.io/dspydantic/guides/optimization/first-optimization/) - First extraction in 5 minutes
-- [Use Cases](https://davidberenstein1957.github.io/dspydantic/use-cases/) - Real-world examples
-- [Cookbook](https://davidberenstein1957.github.io/dspydantic/cookbook/) - Copy-paste patterns
+- [Configure Optimizations](https://davidberenstein1957.github.io/dspydantic/guides/advanced/configure-optimizations/) - Optimizers, sequential mode, threads
+- [Field Inclusion & Exclusion](https://davidberenstein1957.github.io/dspydantic/guides/advanced/field-exclusion/) - Focus optimization on specific fields
 - [API Reference](https://davidberenstein1957.github.io/dspydantic/reference/api/prompter/) - Full documentation
 
 ## License
