@@ -71,7 +71,7 @@ def image_to_base64(image_path: str | Path) -> str:
             rgb_img = Image.new("RGB", img.size, (255, 255, 255))
             if img.mode == "P":
                 img = img.convert("RGBA")
-            rgb_img.paste(img, mask=img.split()[-1] if img.mode == "RGBA" else None)
+            rgb_img.paste(img, mask=img.split()[-1] if img.mode in ("RGBA", "LA") else None)
             img = rgb_img
         img.save(buffer, format="PNG")
         image_bytes = buffer.getvalue()

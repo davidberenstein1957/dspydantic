@@ -211,8 +211,6 @@ class Prompter:
             model_id=model_id,
             api_key=api_key,
             cache=cache,
-            system_prompt=state.optimized_system_prompt,
-            instruction_prompt=state.optimized_instruction_prompt,
             optimized_descriptions=state.optimized_descriptions,
             optimized_system_prompt=state.optimized_system_prompt,
             optimized_instruction_prompt=state.optimized_instruction_prompt,
@@ -502,16 +500,22 @@ class Prompter:
         except (json.JSONDecodeError, AttributeError):
             pass
 
-        # Try regex extraction for nested JSON
-        json_pattern = r"\{(?:[^{}]|(?:\{[^{}]*\}))*\}"
-        json_match = re.search(json_pattern, output_text, re.DOTALL)
-        if json_match:
-            try:
-                return json.loads(json_match.group())
-            except json.JSONDecodeError:
-                pass
+        start = output_text.find("{")
+        if start == -1:
+            return None
+        depth = 0
+        for i in range(start, len(output_text)):
+            if output_text[i] == "{":
+                depth += 1
+            elif output_text[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    try:
+                        return json.loads(output_text[start : i + 1])
+                    except json.JSONDecodeError:
+                        pass
+                    break
 
-        # Try simpler pattern
         json_match = re.search(r"\{.*\}", output_text, re.DOTALL)
         if json_match:
             try:
@@ -669,7 +673,7 @@ class Prompter:
             ...     user = await prompter.apredict(text="John Doe, 30")
             ...     print(user.name)
         """
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
             None,
             lambda: self.predict(
@@ -716,13 +720,10 @@ class Prompter:
                     return (index, e)
 
         tasks = [process_with_semaphore(i, item) for i, item in enumerate(inputs)]
-        completed = await asyncio.gather(*tasks, return_exceptions=(on_error == "return"))
+        completed = await asyncio.gather(*tasks)
 
-        # Sort by original index
         results: list[BaseModel | Exception] = [None] * len(inputs)  # type: ignore
         for item in completed:
-            if isinstance(item, Exception) and on_error == "raise":
-                raise item
             if isinstance(item, tuple):
                 index, result = item
                 results[index] = result

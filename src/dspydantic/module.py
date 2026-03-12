@@ -177,23 +177,7 @@ class PydanticOptimizerModule(dspy.Module):
                     count = optimized_prompt.count(placeholder_str)
 
                     if count == 0:
-                        # Missing - restore from original
-                        original_idx = instruction_prompt.find(placeholder_str)
-                        if original_idx != -1:
-                            before = instruction_prompt[max(0, original_idx - 30) : original_idx]
-                            after_start = original_idx + len(placeholder_str)
-                            after = instruction_prompt[after_start : after_start + 30]
-                            context_words = (before + " " + after).split()[:5]
-                            restored = False
-                            for word in context_words:
-                                if len(word) > 3 and word in optimized_prompt:
-                                    optimized_prompt = optimized_prompt.replace(
-                                        word, f"{word} {placeholder_str}", 1
-                                    )
-                                    restored = True
-                                    break
-                            if not restored:
-                                optimized_prompt += f" {placeholder_str}"
+                        break
                     elif count > 1:
                         # Duplicate - keep only the first occurrence
                         first_idx = optimized_prompt.find(placeholder_str)

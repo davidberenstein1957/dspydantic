@@ -1,5 +1,6 @@
 """Main optimizer class for Pydantic models using DSPy."""
 
+import inspect
 from collections.abc import Callable
 from typing import Any
 
@@ -441,6 +442,46 @@ class PydanticOptimizer:
             evaluator_config=evaluator_config,
         )
 
+    def _resolve_evaluate_fn(self, lm: dspy.LM) -> Callable[..., float]:
+        """Resolve evaluate_fn from raw value to a callable.
+
+        Args:
+            lm: The DSPy language model.
+
+        Returns:
+            Resolved evaluation function.
+
+        Raises:
+            ValueError: If evaluate_fn is an invalid string.
+            TypeError: If evaluate_fn has unexpected type.
+        """
+        raw = self.evaluate_fn
+        evaluator_config_to_use = self.evaluator_config
+        if evaluator_config_to_use is None and isinstance(raw, str):
+            lower = raw.lower()
+            if lower in ("exact", "levenshtein"):
+                evaluator_config_to_use = {"default": lower, "field_overrides": {}}
+
+        if raw is None:
+            return self._default_evaluate_fn(lm, evaluator_config=evaluator_config_to_use)
+        if isinstance(raw, str):
+            lower = raw.lower()
+            if lower in ("exact", "levenshtein"):
+                return self._default_evaluate_fn(
+                    lm, metric=lower, evaluator_config=evaluator_config_to_use
+                )
+            raise ValueError(
+                f"evaluate_fn must be a callable, dspy.LM, None, or "
+                f'one of ("exact", "levenshtein"), got "{raw}"'
+            )
+        if isinstance(raw, dspy.LM):
+            return self._default_evaluate_fn(
+                lm, judge_lm=raw, evaluator_config=evaluator_config_to_use
+            )
+        if callable(raw):
+            return self._default_evaluate_fn(lm, evaluator_config=evaluator_config_to_use)
+        raise TypeError(f"Unexpected type for evaluate_fn: {type(raw)}")
+
     def _create_metric_function(self, lm: dspy.LM) -> Callable[..., float]:
         """Create a metric function for DSPy optimization.
 
@@ -450,43 +491,7 @@ class PydanticOptimizer:
         Returns:
             A function that evaluates prompt performance.
         """
-        # Use provided evaluate_fn or create default one
-        evaluate_fn = self.evaluate_fn
-        judge_lm: dspy.LM | None = None
-
-        # Handle evaluator_config - convert string evaluate_fn to evaluator_config if needed
-        evaluator_config_to_use = self.evaluator_config
-        if evaluator_config_to_use is None and isinstance(evaluate_fn, str):
-            # Convert legacy string metric to evaluator_config format for backward compatibility
-            evaluate_fn_lower = evaluate_fn.lower()
-            if evaluate_fn_lower in ("exact", "levenshtein"):
-                evaluator_config_to_use = {"default": evaluate_fn_lower, "field_overrides": {}}
-
-        if evaluate_fn is None:
-            evaluate_fn = self._default_evaluate_fn(lm, evaluator_config=evaluator_config_to_use)
-        elif isinstance(evaluate_fn, str):
-            # Handle string metrics: "exact" or "levenshtein"
-            evaluate_fn_lower = evaluate_fn.lower()
-            if evaluate_fn_lower in ("exact", "levenshtein"):
-                evaluate_fn = self._default_evaluate_fn(
-                    lm, metric=evaluate_fn_lower, evaluator_config=evaluator_config_to_use
-                )
-            else:
-                valid_options = '"exact", "levenshtein"'
-                raise ValueError(
-                    f"evaluate_fn must be a callable, dspy.LM, None, or "
-                    f'one of ({valid_options}), got "{evaluate_fn}"'
-                )
-        elif isinstance(evaluate_fn, dspy.LM):
-            # If evaluate_fn is a dspy.LM, use it as judge when expected_output is None
-            judge_lm = evaluate_fn
-            evaluate_fn = self._default_evaluate_fn(
-                lm, judge_lm=judge_lm, evaluator_config=evaluator_config_to_use
-            )
-        elif callable(evaluate_fn):
-            # Custom callable is treated as judge when expected_output is None: use default
-            # eval which does extraction then calls this callable with 5 args.
-            evaluate_fn = self._default_evaluate_fn(lm, evaluator_config=evaluator_config_to_use)
+        evaluate_fn = self._resolve_evaluate_fn(lm)
 
         def metric_function(
             example: dspy.Example, prediction: dspy.Prediction, trace: Any = None
@@ -562,7 +567,7 @@ class PydanticOptimizer:
             if new_val is not None:
                 merged[field_path] = new_val
             example_obj = self._dspy_example_to_example(example)
-            try:
+            if self._evaluate_fn_accepts_optimized_demos(evaluate_fn):
                 score = evaluate_fn(
                     example_obj,
                     merged,
@@ -570,7 +575,7 @@ class PydanticOptimizer:
                     self.instruction_prompt,
                     optimized_demos=optimized_demos,
                 )
-            except TypeError:
+            else:
                 score = evaluate_fn(
                     example_obj,
                     merged,
@@ -795,6 +800,15 @@ class PydanticOptimizer:
             default_kwargs["max_bootstrapped_demos"] = max(1, min(2, len(self.examples) - 1))
         return optimizer_class(**{**default_kwargs, **self.optimizer_kwargs})
 
+    @staticmethod
+    def _evaluate_fn_accepts_optimized_demos(fn: Callable[..., float]) -> bool:
+        """Check if evaluate_fn accepts optimized_demos keyword argument."""
+        try:
+            sig = inspect.signature(fn)
+            return "optimized_demos" in sig.parameters
+        except (ValueError, TypeError):
+            return False
+
     def _optimize_single_field(
         self,
         field_path: str,
@@ -886,7 +900,7 @@ class PydanticOptimizer:
         scores = []
         for val_ex in val_examples:
             example_obj = self._dspy_example_to_example(val_ex)
-            try:
+            if self._evaluate_fn_accepts_optimized_demos(evaluate_fn):
                 score = evaluate_fn(
                     example_obj,
                     merged_descriptions,
@@ -894,7 +908,7 @@ class PydanticOptimizer:
                     self.instruction_prompt,
                     optimized_demos=optimized_demos,
                 )
-            except TypeError:
+            else:
                 score = evaluate_fn(
                     example_obj,
                     merged_descriptions,
@@ -1009,7 +1023,7 @@ class PydanticOptimizer:
         scores = []
         for val_ex in val_examples:
             example_obj = self._dspy_example_to_example(val_ex)
-            try:
+            if self._evaluate_fn_accepts_optimized_demos(evaluate_fn):
                 score = evaluate_fn(
                     example_obj,
                     current_descriptions,
@@ -1017,7 +1031,7 @@ class PydanticOptimizer:
                     merged_instruction,
                     optimized_demos=optimized_demos,
                 )
-            except TypeError:
+            else:
                 score = evaluate_fn(
                     example_obj,
                     current_descriptions,
@@ -1217,47 +1231,7 @@ class PydanticOptimizer:
                 "Call dspy.configure(lm=dspy.LM(...)) first."
             )
         lm = dspy.settings.lm
-
-        # Ensure we have a valid evaluation function
-        evaluate_fn_raw = self.evaluate_fn
-        judge_lm: dspy.LM | None = None
-
-        # Handle evaluator_config - convert string evaluate_fn to evaluator_config if needed
-        evaluator_config_to_use = self.evaluator_config
-        if evaluator_config_to_use is None and isinstance(evaluate_fn_raw, str):
-            # Convert legacy string metric to evaluator_config format for backward compatibility
-            evaluate_fn_lower = evaluate_fn_raw.lower()
-            if evaluate_fn_lower in ("exact", "levenshtein"):
-                evaluator_config_to_use = {"default": evaluate_fn_lower, "field_overrides": {}}
-
-        if evaluate_fn_raw is None:
-            evaluate_fn = self._default_evaluate_fn(
-                lm, evaluator_config=evaluator_config_to_use
-            )
-        elif isinstance(evaluate_fn_raw, str):
-            # Handle string metrics: "exact" or "levenshtein"
-            evaluate_fn_lower = evaluate_fn_raw.lower()
-            if evaluate_fn_lower in ("exact", "levenshtein"):
-                evaluate_fn = self._default_evaluate_fn(
-                    lm, metric=evaluate_fn_lower, evaluator_config=evaluator_config_to_use
-                )
-            else:
-                valid_options = '"exact", "levenshtein"'
-                raise ValueError(
-                    f"evaluate_fn must be a callable, dspy.LM, None, or "
-                    f'one of ({valid_options}), got "{evaluate_fn_raw}"'
-                )
-        elif isinstance(evaluate_fn_raw, dspy.LM):
-            # If evaluate_fn is a dspy.LM, use it as judge when expected_output is None
-            judge_lm = evaluate_fn_raw
-            evaluate_fn = self._default_evaluate_fn(
-                lm, judge_lm=judge_lm, evaluator_config=evaluator_config_to_use
-            )
-        elif callable(evaluate_fn_raw):
-            # Custom function - use default wrapper, it will handle judge functions internally
-            evaluate_fn = self._default_evaluate_fn(lm, evaluator_config=evaluator_config_to_use)
-        else:
-            raise TypeError(f"Unexpected type for evaluate_fn: {type(evaluate_fn_raw)}")
+        evaluate_fn = self._resolve_evaluate_fn(lm)
 
         # Create DSPy program with field descriptions, types, and prompts
         program = PydanticOptimizerModule(
@@ -1460,7 +1434,7 @@ class PydanticOptimizer:
 
             # Convert DSPy example to our Example object
             example_obj = self._dspy_example_to_example(val_ex)
-            try:
+            if self._evaluate_fn_accepts_optimized_demos(evaluate_fn):
                 score = evaluate_fn(
                     example_obj,
                     pred_descriptions,
@@ -1468,7 +1442,7 @@ class PydanticOptimizer:
                     pred_instruction_prompt,
                     optimized_demos=optimized_demos,
                 )
-            except TypeError:
+            else:
                 score = evaluate_fn(
                     example_obj,
                     pred_descriptions,

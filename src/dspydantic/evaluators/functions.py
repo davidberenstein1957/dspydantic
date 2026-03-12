@@ -1,6 +1,8 @@
 """Default evaluation functions for Pydantic model optimization."""
 
+import inspect
 import json
+import logging
 import re
 from collections.abc import Callable
 from typing import Any, cast
@@ -27,6 +29,8 @@ from dspydantic.utils import (
     format_demo_input,
     format_instruction_prompt_template,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def default_judge_fn(
@@ -120,30 +124,41 @@ def default_judge_fn(
     # Extract evaluation from result
     evaluation_text = str(result.evaluation) if hasattr(result, "evaluation") else str(result)
 
-    # Try to parse JSON from evaluation
     try:
         evaluation = json.loads(evaluation_text)
         score = float(evaluation.get("score", 0.5))
     except (json.JSONDecodeError, ValueError, AttributeError):
-        # Try to extract score from text using regex
         score_match = re.search(r'"score"\s*:\s*([0-9.]+)', evaluation_text)
         if score_match:
             try:
                 score = float(score_match.group(1))
             except ValueError:
+                logger.warning(
+                    "LLM judge returned unparseable score; defaulting to 0.5. Evaluation text: %s",
+                    evaluation_text[:200],
+                )
                 score = 0.5
         else:
-            # Fallback: try to find a number between 0 and 1
             score_match = re.search(r"\b(0\.\d+|1\.0|1)\b", evaluation_text)
             if score_match:
                 try:
                     score = float(score_match.group(1))
                 except ValueError:
+                    logger.warning(
+                        "LLM judge returned unparseable score; defaulting to 0.5. "
+                        "Evaluation text: %s",
+                        evaluation_text[:200],
+                    )
                     score = 0.5
             else:
+                logger.warning(
+                    "LLM judge returned text that could not be parsed; defaulting to 0.5. "
+                    "Evaluation text: %s",
+                    evaluation_text[:200],
+                )
                 score = 0.5
 
-    return max(0.0, min(1.0, score))  # Ensure score is between 0.0 and 1.0
+    return max(0.0, min(1.0, score))
 
 
 def default_evaluate_fn(
@@ -172,8 +187,9 @@ def default_evaluate_fn(
         judge_lm: Optional separate LM to use as judge when expected_output is None.
         custom_judge_fn: Optional custom judge function to use when expected_output is None.
         exclude_fields: Optional list of field paths to exclude from evaluation.
-            Field paths use dot notation for nested fields (e.g., ["address.street", "metadata"]).
-            Fields matching these paths (or starting with them) will be excluded from scoring.
+            Field paths use dot notation for nested fields
+            (e.g., ["address.street", "metadata"]).
+            Fields matching these paths (or starting with them) are excluded.
         evaluator_config: Optional evaluator configuration dict with "default" and "field_overrides".
             If provided, uses configured evaluators instead of metric parameter.
 
@@ -353,26 +369,25 @@ def default_evaluate_fn(
         if expected is None:
             # Check if custom_judge_fn is provided
             if custom_judge_fn is not None:
-                # Try calling as judge function (with extracted_data)
-                # Cast to Any to handle different function signatures
                 judge_fn = cast(Any, custom_judge_fn)
                 try:
-                    return judge_fn(
-                        example,
-                        extracted_data,
-                        optimized_descriptions,
-                        optimized_system_prompt,
-                        optimized_instruction_prompt,
-                    )
-                except TypeError:
-                    # Fallback: try with old signature (without extracted_data)
-                    # This handles backward compatibility
-                    return judge_fn(
-                        example,
-                        optimized_descriptions,
-                        optimized_system_prompt,
-                        optimized_instruction_prompt,
-                    )
+                    param_count = len(inspect.signature(judge_fn).parameters)
+                    if param_count >= 5:
+                        return judge_fn(
+                            example,
+                            extracted_data,
+                            optimized_descriptions,
+                            optimized_system_prompt,
+                            optimized_instruction_prompt,
+                        )
+                except (ValueError, TypeError):
+                    pass
+                return judge_fn(
+                    example,
+                    optimized_descriptions,
+                    optimized_system_prompt,
+                    optimized_instruction_prompt,
+                )
             # Use judge_lm if provided, otherwise use default LM judge
             judge_to_use = judge_lm if judge_lm is not None else lm
             return default_judge_fn(

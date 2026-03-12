@@ -37,8 +37,7 @@ try:
 
     __version__ = version("dspydantic")
 except Exception:
-    # Fallback if package not installed
-    __version__ = "0.0.7"
+    __version__ = "0.0.0"
 
 
 class PersistenceError(Exception):
@@ -93,7 +92,7 @@ def save_prompter_state(
         with open(schema_path, "w") as f:
             json.dump(state.model_schema, f, indent=2)
 
-    except Exception as e:
+    except (OSError, json.JSONDecodeError) as e:
         raise PersistenceError(f"Failed to save prompter state: {e}") from e
 
 
@@ -195,5 +194,5 @@ def load_prompter_state(
 
     except PersistenceError:
         raise
-    except Exception as e:
+    except (OSError, json.JSONDecodeError) as e:
         raise PersistenceError(f"Failed to load prompter state: {e}") from e

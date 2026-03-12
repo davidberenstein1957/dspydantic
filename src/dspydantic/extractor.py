@@ -97,7 +97,6 @@ def extract_field_descriptions(
                         # For arrays, we use the field path as-is (not with [])
                         extract_from_schema(items_schema, field_path, defs_dict)
 
-    defs = schema.get("$defs", {})
     extract_from_schema(schema, prefix, defs)
     return descriptions
 

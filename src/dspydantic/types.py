@@ -151,8 +151,9 @@ class Example:
                 If None, evaluation will use an LLM judge or custom evaluation function.
             text: Plain text input (str) or dictionary of text values for template
                 formatting (dict). If a dict, keys correspond to placeholders in
-                instruction prompt templates (e.g., {"key": "value"}). If a string,
-                it's used as the input text.
+                instruction prompt templates (e.g., {"key": "value"}). For input_data
+                text extraction, known keys "text", "review", "content", "input" are
+                checked first. If none match, values are joined with spaces as fallback.
             image_path: Path to an image file to convert to base64.
             image_base64: Base64-encoded image string.
             pdf_path: Path to a PDF file to convert to images.
@@ -163,11 +164,8 @@ class Example:
         """
         self.expected_output = expected_output
 
-        # Store text_dict if text is a dict, otherwise store as text_string
         if isinstance(text, dict):
             self.text_dict = text
-            # Extract text from dict if available (for input_data)
-            # Check common keys: "text", "review", "content", etc.
             text_string = (
                 text.get("text")
                 or text.get("review")
@@ -175,6 +173,8 @@ class Example:
                 or text.get("input")
                 or None
             )
+            if text_string is None and text:
+                text_string = " ".join(str(v) for v in text.values())
         else:
             self.text_dict = {}
             text_string = text

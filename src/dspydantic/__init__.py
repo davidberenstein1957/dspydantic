@@ -1,5 +1,12 @@
 """dspydantic - Optimize Pydantic model field descriptions using DSPy."""
 
+try:
+    from importlib.metadata import version
+
+    __version__ = version("dspydantic")
+except Exception:
+    __version__ = "0.0.0"
+
 # Import evaluators package to trigger registration - must be done before importing classes
 import dspydantic.evaluators  # noqa: F401
 
@@ -34,7 +41,6 @@ from dspydantic.utils import (
     prepare_input_data,
 )
 
-__version__ = "0.1.1"
 __all__ = [
     "PydanticOptimizer",
     "Prompter",
