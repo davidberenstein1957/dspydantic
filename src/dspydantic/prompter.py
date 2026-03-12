@@ -267,12 +267,13 @@ class Prompter:
         verbose: bool = False,
         exclude_fields: list[str] | None = None,
         evaluator_config: dict[str, Any] | None = None,
+        sequential: bool = True,
         **kwargs: Any,
     ) -> OptimizationResult:
         """Optimize prompts and field descriptions.
 
         Uses PydanticOptimizer internally to perform optimization.
-        
+
         If model is None and examples have string expected_output values,
         a model with a single "output" field will be automatically created.
 
@@ -285,13 +286,13 @@ class Prompter:
             verbose: Print progress (default: False).
             exclude_fields: Field names to exclude from evaluation.
             evaluator_config: Evaluator configuration dict.
+            sequential: If True (default), optimize each field independently
+                (deepest-first), then prompts. If False, single-pass optimization.
             **kwargs: Additional kwargs passed to PydanticOptimizer.
 
         Returns:
             OptimizationResult with optimized descriptions and prompts.
         """
-        # Create optimizer (handles None model by auto-creating OutputModel if needed)
-        # Uses dspy.settings.lm which should be configured via dspy.configure()
         optimizer_instance = PydanticOptimizer(
             model=self.model,
             examples=examples,
@@ -304,6 +305,7 @@ class Prompter:
             train_split=train_split,
             exclude_fields=exclude_fields,
             evaluator_config=evaluator_config,
+            sequential=sequential,
             **kwargs,
         )
 

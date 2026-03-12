@@ -190,6 +190,7 @@ class PydanticOptimizer:
         optimizer_kwargs: dict[str, Any] | None = None,
         exclude_fields: list[str] | None = None,
         evaluator_config: dict[str, Any] | None = None,
+        sequential: bool = True,
     ) -> None:
         """Initialize the Pydantic optimizer.
 
@@ -241,6 +242,9 @@ class PydanticOptimizer:
             evaluator_config: Optional evaluator configuration dict with "default" and
                 "field_overrides" keys. If provided, uses configured evaluators instead
                 of evaluate_fn/metric. Supports string names, config dicts, and custom classes.
+            sequential: If True (default), optimize each field description independently
+                (deepest-nested first), then optimize prompts. Reduces search space per run.
+                If False, use single-pass optimization (all fields and prompts together).
 
         Raises:
             ValueError: If at least one example is not provided, or if optimizer string
@@ -280,6 +284,7 @@ class PydanticOptimizer:
         self.verbose = verbose
         self.train_split = train_split
         self.optimizer_kwargs = optimizer_kwargs or {}
+        self.sequential = sequential
 
         # Handle optimizer parameter (can be string or Teleprompter instance)
         if optimizer is None:
@@ -359,6 +364,18 @@ class PydanticOptimizer:
             mapping["miprov2zeroshot"] = mapping["miprov2"]
 
         return mapping
+
+    def _sort_fields_by_depth(self) -> list[str]:
+        """Return field paths sorted deepest-first (most dots first).
+
+        Returns:
+            List of field paths ordered by nesting depth, deepest first.
+        """
+        return sorted(
+            self.field_descriptions.keys(),
+            key=lambda p: p.count("."),
+            reverse=True,
+        )
 
     def _auto_select_optimizer(self) -> str:
         """Auto-select the best optimizer based on the number of examples.
@@ -528,6 +545,44 @@ class PydanticOptimizer:
 
         return metric_function
 
+    def _create_single_field_metric(
+        self,
+        field_path: str,
+        current_descriptions: dict[str, str],
+        evaluate_fn: Callable[..., float],
+        optimized_demos: list[dict[str, Any]],
+    ) -> Callable[..., float]:
+        """Create a metric for single-field optimization that merges with current_descriptions."""
+
+        def single_field_metric(
+            example: dspy.Example, prediction: dspy.Prediction, trace: Any = None
+        ) -> float:
+            merged = dict(current_descriptions)
+            new_val = getattr(prediction, f"optimized_{field_path}", None)
+            if new_val is not None:
+                merged[field_path] = new_val
+            example_obj = self._dspy_example_to_example(example)
+            try:
+                score = evaluate_fn(
+                    example_obj,
+                    merged,
+                    self.system_prompt,
+                    self.instruction_prompt,
+                    optimized_demos=optimized_demos,
+                )
+            except TypeError:
+                score = evaluate_fn(
+                    example_obj,
+                    merged,
+                    self.system_prompt,
+                    self.instruction_prompt,
+                )
+            if not isinstance(score, (int, float)) or score < 0.0 or score > 1.0:
+                return 0.0
+            return float(score)
+
+        return single_field_metric
+
     def _dspy_example_to_example(self, dspy_ex: dspy.Example) -> Example:
         """Convert a DSPy example to our Example object.
 
@@ -615,18 +670,28 @@ class PydanticOptimizer:
                 expected_output=expected_output,
             )
 
-    def _prepare_dspy_examples(self) -> list[dspy.Example]:
+    def _prepare_dspy_examples(
+        self,
+        descriptions_override: dict[str, str] | None = None,
+    ) -> list[dspy.Example]:
         """Prepare examples as DSPy examples.
+
+        Args:
+            descriptions_override: Optional dict of field descriptions to use
+                instead of self.field_descriptions. Used for sequential mode
+                when optimizing a subset of fields.
 
         Returns:
             List of dspy.Example objects.
         """
+        descriptions = descriptions_override or self.field_descriptions
         trainset = []
-        input_keys = list(self.field_descriptions.keys())
+        input_keys = list(descriptions.keys())
 
-        # Add field type keys to input keys
-        for field_path in self.field_types.keys():
-            input_keys.append(f"field_type_{field_path}")
+        # Add field type keys to input keys (only for fields in descriptions)
+        for field_path in descriptions.keys():
+            if f"field_type_{field_path}" not in input_keys:
+                input_keys.append(f"field_type_{field_path}")
 
         # Add prompts to input keys if they exist
         if self.system_prompt is not None:
@@ -665,10 +730,11 @@ class PydanticOptimizer:
                 "expected_output": expected_output,
             }
             # Add field descriptions as inputs
-            example_dict.update(self.field_descriptions)
+            example_dict.update(descriptions)
 
             # Add field types as inputs (with field_type_ prefix to distinguish from descriptions)
-            for field_path, field_type in self.field_types.items():
+            for field_path in descriptions.keys():
+                field_type = self.field_types.get(field_path, "")
                 example_dict[f"field_type_{field_path}"] = field_type
 
             # Add prompts as inputs if they exist
@@ -691,6 +757,437 @@ class PydanticOptimizer:
             trainset.append(dspy.Example(**example_dict).with_inputs(*input_keys))
 
         return trainset
+
+    def _create_teleprompter(self, metric: Callable[..., float]) -> Teleprompter:
+        """Create a Teleprompter instance with the given metric."""
+        if self.custom_optimizer is not None:
+            return self.custom_optimizer
+        if self.optimizer_type == "miprov2zeroshot":
+            default_kwargs = {
+                "metric": metric,
+                "num_threads": self.num_threads,
+                "init_temperature": self.init_temperature,
+                "auto": "light",
+                "max_bootstrapped_demos": 0,
+                "max_labeled_demos": 0,
+            }
+            return MIPROv2(**{**default_kwargs, **self.optimizer_kwargs})
+        if self.optimizer_type == "miprov2":
+            default_kwargs = {
+                "metric": metric,
+                "num_threads": self.num_threads,
+                "init_temperature": self.init_temperature,
+                "auto": "light",
+            }
+            if len(self.examples) <= 10:
+                default_kwargs["max_bootstrapped_demos"] = 2
+                default_kwargs["max_labeled_demos"] = 2
+            return MIPROv2(**{**default_kwargs, **self.optimizer_kwargs})
+        teleprompter_classes = self._get_teleprompter_subclasses()
+        if self.optimizer_type not in teleprompter_classes:
+            valid_optimizers = sorted(teleprompter_classes.keys())
+            raise ValueError(
+                f"Unknown optimizer_type: {self.optimizer_type}. Valid options: {valid_optimizers}"
+            )
+        optimizer_class = teleprompter_classes[self.optimizer_type]
+        default_kwargs = {"metric": metric}
+        if self.optimizer_type == "bootstrapfewshot" and len(self.examples) < 5:
+            default_kwargs["max_bootstrapped_demos"] = max(1, min(2, len(self.examples) - 1))
+        return optimizer_class(**{**default_kwargs, **self.optimizer_kwargs})
+
+    def _optimize_single_field(
+        self,
+        field_path: str,
+        current_descriptions: dict[str, str],
+        train_examples: list[dspy.Example],
+        val_examples: list[dspy.Example],
+        evaluate_fn: Callable[..., float],
+        baseline_score: float,
+        optimized_demos: list[dict[str, Any]],
+    ) -> tuple[str, float]:
+        """Optimize a single field description, holding all others fixed.
+
+        Args:
+            field_path: Field path to optimize.
+            current_descriptions: Current best descriptions for all fields.
+            train_examples: DSPy training examples.
+            val_examples: DSPy validation examples.
+            evaluate_fn: Evaluation function for scoring.
+            baseline_score: Current best score to beat.
+            optimized_demos: Few-shot demos for extraction.
+
+        Returns:
+            Tuple of (best_description, best_score).
+        """
+        single_field_descriptions = {field_path: current_descriptions[field_path]}
+        program = PydanticOptimizerModule(
+            field_descriptions=single_field_descriptions,
+            field_types={field_path: self.field_types.get(field_path, "")},
+            has_system_prompt=False,
+            has_instruction_prompt=False,
+        )
+
+        train_single = self._prepare_dspy_examples(
+            descriptions_override=single_field_descriptions,
+        )
+        val_single = self._prepare_dspy_examples(
+            descriptions_override=single_field_descriptions,
+        )
+        split_idx = len(train_examples)
+        train_single = train_single[:split_idx]
+        val_single = val_single[split_idx:] if split_idx < len(train_single) else train_single
+
+        metric = self._create_single_field_metric(
+            field_path, current_descriptions, evaluate_fn, optimized_demos
+        )
+        optimizer = self._create_teleprompter(metric)
+
+        optimizers_with_valset = (
+            "miprov2zeroshot",
+            "miprov2",
+            "gepa",
+            "bootstrapfewshotwithrandomsearch",
+            "copro",
+            "simba",
+            "custom",
+        )
+        if self.optimizer_type in optimizers_with_valset:
+            try:
+                optimized_program = optimizer.compile(
+                    program,
+                    trainset=train_single,
+                    valset=val_single,
+                )
+            except TypeError:
+                optimized_program = optimizer.compile(
+                    program,
+                    trainset=train_single,
+                )
+        else:
+            optimized_program = optimizer.compile(
+                program,
+                trainset=train_single,
+            )
+
+        program_args: dict[str, Any] = {
+            field_path: current_descriptions[field_path],
+            f"field_type_{field_path}": self.field_types.get(field_path, ""),
+        }
+        test_result = optimized_program(**program_args)
+        new_description = getattr(
+            test_result,
+            f"optimized_{field_path}",
+            current_descriptions[field_path],
+        )
+
+        merged_descriptions = dict(current_descriptions)
+        merged_descriptions[field_path] = new_description
+
+        scores = []
+        for val_ex in val_examples:
+            example_obj = self._dspy_example_to_example(val_ex)
+            try:
+                score = evaluate_fn(
+                    example_obj,
+                    merged_descriptions,
+                    self.system_prompt,
+                    self.instruction_prompt,
+                    optimized_demos=optimized_demos,
+                )
+            except TypeError:
+                score = evaluate_fn(
+                    example_obj,
+                    merged_descriptions,
+                    self.system_prompt,
+                    self.instruction_prompt,
+                )
+            scores.append(score)
+
+        new_score = sum(scores) / len(scores) if scores else 0.0
+
+        if new_score >= baseline_score:
+            return (new_description, new_score)
+        return (current_descriptions[field_path], baseline_score)
+
+    def _optimize_prompt(
+        self,
+        prompt_type: str,
+        current_descriptions: dict[str, str],
+        current_system_prompt: str | None,
+        current_instruction_prompt: str | None,
+        train_examples: list[dspy.Example],
+        val_examples: list[dspy.Example],
+        evaluate_fn: Callable[..., float],
+        baseline_score: float,
+        optimized_demos: list[dict[str, Any]],
+    ) -> tuple[str | None, float]:
+        """Optimize system or instruction prompt, holding field descriptions fixed.
+
+        Args:
+            prompt_type: "system" or "instruction".
+            current_descriptions: Optimized field descriptions from Phase 1.
+            current_system_prompt: Current system prompt.
+            current_instruction_prompt: Current instruction prompt.
+            train_examples: DSPy training examples.
+            val_examples: DSPy validation examples.
+            evaluate_fn: Evaluation function.
+            baseline_score: Current best score.
+            optimized_demos: Few-shot demos.
+
+        Returns:
+            Tuple of (best_prompt_value, best_score).
+        """
+        if prompt_type == "system":
+            if current_system_prompt is None:
+                return (None, baseline_score)
+            program = PydanticOptimizerModule(
+                field_descriptions={},
+                field_types={},
+                has_system_prompt=True,
+                has_instruction_prompt=False,
+            )
+            current_prompt = current_system_prompt
+            attr_name = "optimized_system_prompt"
+        else:
+            if current_instruction_prompt is None:
+                return (None, baseline_score)
+            program = PydanticOptimizerModule(
+                field_descriptions={},
+                field_types={},
+                has_system_prompt=False,
+                has_instruction_prompt=True,
+            )
+            current_prompt = current_instruction_prompt
+            attr_name = "optimized_instruction_prompt"
+
+        metric = self._create_metric_function(dspy.settings.lm)
+        optimizer = self._create_teleprompter(metric)
+
+        optimizers_with_valset = (
+            "miprov2zeroshot",
+            "miprov2",
+            "gepa",
+            "bootstrapfewshotwithrandomsearch",
+            "copro",
+            "simba",
+            "custom",
+        )
+        if self.optimizer_type in optimizers_with_valset:
+            try:
+                optimized_program = optimizer.compile(
+                    program,
+                    trainset=train_examples,
+                    valset=val_examples,
+                )
+            except TypeError:
+                optimized_program = optimizer.compile(
+                    program,
+                    trainset=train_examples,
+                )
+        else:
+            optimized_program = optimizer.compile(
+                program,
+                trainset=train_examples,
+            )
+
+        program_args: dict[str, Any] = {}
+        if prompt_type == "system":
+            program_args["system_prompt"] = current_system_prompt
+        else:
+            program_args["instruction_prompt"] = current_instruction_prompt
+
+        test_result = optimized_program(**program_args)
+        new_prompt = getattr(test_result, attr_name, current_prompt)
+
+        if prompt_type == "system":
+            merged_system = new_prompt
+            merged_instruction = current_instruction_prompt
+        else:
+            merged_system = current_system_prompt
+            merged_instruction = new_prompt
+
+        scores = []
+        for val_ex in val_examples:
+            example_obj = self._dspy_example_to_example(val_ex)
+            try:
+                score = evaluate_fn(
+                    example_obj,
+                    current_descriptions,
+                    merged_system,
+                    merged_instruction,
+                    optimized_demos=optimized_demos,
+                )
+            except TypeError:
+                score = evaluate_fn(
+                    example_obj,
+                    current_descriptions,
+                    merged_system,
+                    merged_instruction,
+                )
+            scores.append(score)
+
+        new_score = sum(scores) / len(scores) if scores else 0.0
+
+        if new_score >= baseline_score:
+            return (new_prompt, new_score)
+        if prompt_type == "system":
+            return (current_system_prompt, baseline_score)
+        return (current_instruction_prompt, baseline_score)
+
+    def _optimize_sequential(
+        self,
+        lm: dspy.LM,
+        evaluate_fn: Callable[..., float],
+        train_examples: list[dspy.Example],
+        val_examples: list[dspy.Example],
+        optimized_demos: list[dict[str, Any]],
+    ) -> OptimizationResult:
+        """Run sequential optimization: fields deepest-first, then prompts."""
+        baseline_scores = []
+        for val_ex in val_examples:
+            example_obj = self._dspy_example_to_example(val_ex)
+            baseline_score = evaluate_fn(
+                example_obj,
+                self.field_descriptions,
+                self.system_prompt,
+                self.instruction_prompt,
+            )
+            baseline_scores.append(baseline_score)
+
+        baseline_avg = sum(baseline_scores) / len(baseline_scores) if baseline_scores else 0.0
+        if self.verbose:
+            print(f"Baseline average score: {baseline_avg:.2%}")
+            print("\nPhase 1: Optimizing field descriptions (deepest-first)...")
+
+        current_descriptions = dict(self.field_descriptions)
+        current_score = baseline_avg
+        sorted_fields = self._sort_fields_by_depth()
+        total_fields = len(sorted_fields)
+
+        for idx, field_path in enumerate(sorted_fields, 1):
+            depth = field_path.count(".")
+            if self.verbose:
+                print(
+                    f"  Field {idx}/{total_fields}: {field_path} (depth {depth}) ... ",
+                    end="",
+                    flush=True,
+                )
+            new_desc, new_score = self._optimize_single_field(
+                field_path=field_path,
+                current_descriptions=current_descriptions,
+                train_examples=train_examples,
+                val_examples=val_examples,
+                evaluate_fn=evaluate_fn,
+                baseline_score=current_score,
+                optimized_demos=optimized_demos,
+            )
+            improved = new_score > current_score
+            current_descriptions[field_path] = new_desc
+            if self.verbose:
+                if improved:
+                    print(f"{current_score:.2%} → {new_score:.2%} ✓")
+                else:
+                    print(f"{current_score:.2%} (no improvement)")
+            current_score = new_score
+
+        optimized_system_prompt = self.system_prompt
+        optimized_instruction_prompt = self.instruction_prompt
+
+        if self.system_prompt is not None:
+            if self.verbose:
+                print("\nPhase 2a: Optimizing system_prompt ... ", end="", flush=True)
+            optimized_system_prompt, current_score = self._optimize_prompt(
+                "system",
+                current_descriptions,
+                optimized_system_prompt,
+                optimized_instruction_prompt,
+                train_examples,
+                val_examples,
+                evaluate_fn,
+                current_score,
+                optimized_demos,
+            )
+            if self.verbose:
+                print(f"{current_score:.2%}")
+
+        if self.instruction_prompt is not None:
+            if self.verbose:
+                print("Phase 2b: Optimizing instruction_prompt ... ", end="", flush=True)
+            optimized_instruction_prompt, current_score = self._optimize_prompt(
+                "instruction",
+                current_descriptions,
+                optimized_system_prompt,
+                optimized_instruction_prompt,
+                train_examples,
+                val_examples,
+                evaluate_fn,
+                current_score,
+                optimized_demos,
+            )
+            if self.verbose:
+                print(f"{current_score:.2%}")
+
+        improvement = current_score - baseline_avg
+        improvement_pct = (improvement / baseline_avg * 100) if baseline_avg > 0 else 0.0
+
+        if improvement < 0:
+            if self.verbose:
+                print(f"\n⚠️  WARNING: Optimization decreased performance by {abs(improvement):.2%}")
+                print("Keeping original prompts and descriptions.")
+            current_descriptions = self.field_descriptions.copy()
+            optimized_system_prompt = self.system_prompt
+            optimized_instruction_prompt = self.instruction_prompt
+            current_score = baseline_avg
+            improvement = 0.0
+            improvement_pct = 0.0
+
+        api_calls = 0
+        total_tokens = 0
+        if hasattr(lm, "history") and lm.history:
+            api_calls = len(lm.history)
+            for call in lm.history:
+                if isinstance(call, dict):
+                    usage = call.get("usage", {})
+                    if isinstance(usage, dict):
+                        total_tokens += usage.get("total_tokens", 0)
+
+        if self.verbose:
+            print(f"\n{'=' * 60}")
+            print("Optimization complete")
+            print(f"{'=' * 60}")
+            print(f"Baseline score: {baseline_avg:.2%}")
+            print(f"Final score: {current_score:.2%}")
+            if improvement > 0:
+                print(f"Improvement: {improvement:+.2%}")
+            elif improvement < 0:
+                print(f"⚠️  Optimization decreased performance by {abs(improvement):.2%}")
+            else:
+                print("No change in performance.")
+            if api_calls > 0:
+                print(f"API calls: {api_calls}")
+            if total_tokens > 0:
+                print(f"Total tokens: {total_tokens:,}")
+            print(f"{'=' * 60}\n")
+
+        return OptimizationResult(
+            optimized_descriptions=current_descriptions,
+            optimized_system_prompt=optimized_system_prompt,
+            optimized_instruction_prompt=optimized_instruction_prompt,
+            metrics={
+                "average_score": current_score,
+                "baseline_score": baseline_avg,
+                "improvement": improvement,
+                "improvement_percent": improvement_pct,
+                "validation_size": len(val_examples),
+                "training_size": len(train_examples),
+            },
+            baseline_score=baseline_avg,
+            optimized_score=current_score,
+            optimized_demos=optimized_demos,
+            api_calls=api_calls,
+            total_tokens=total_tokens,
+            estimated_cost_usd=None,
+        )
 
     def optimize(self) -> OptimizationResult:
         """Optimize the Pydantic model field descriptions using DSPy.
@@ -795,56 +1292,21 @@ class PydanticOptimizer:
             print(f"Training examples: {len(train_examples)}")
             print(f"Validation examples: {len(val_examples)}")
 
-        # Create metric function
+        if self.sequential:
+            return self._optimize_sequential(
+                lm=lm,
+                evaluate_fn=evaluate_fn,
+                train_examples=train_examples,
+                val_examples=val_examples,
+                optimized_demos=optimized_demos,
+            )
+
+        # Single-pass optimization (sequential=False)
         metric = self._create_metric_function(lm)
+        optimizer = self._create_teleprompter(metric)
 
-        # Initialize optimizer based on optimizer_type or use custom optimizer
-        optimizer: Teleprompter
-        if self.custom_optimizer is not None:
-            # Use custom optimizer directly
-            optimizer = self.custom_optimizer
-            if self.verbose:
-                print(f"Using custom optimizer: {type(optimizer).__name__}")
-        elif self.optimizer_type == "miprov2zeroshot":
-            # Special case: MIPROv2 with zero-shot settings
-            default_kwargs = {
-                "metric": metric,
-                "num_threads": self.num_threads,
-                "init_temperature": self.init_temperature,
-                "auto": "light",
-                "max_bootstrapped_demos": 0,
-                "max_labeled_demos": 0,
-            }
-            merged_kwargs = {**default_kwargs, **self.optimizer_kwargs}
-            optimizer = MIPROv2(**merged_kwargs)
-        elif self.optimizer_type == "miprov2":
-            # Special case: MIPROv2 with default settings
-            default_kwargs = {
-                "metric": metric,
-                "num_threads": self.num_threads,
-                "init_temperature": self.init_temperature,
-                "auto": "light",
-            }
-            merged_kwargs = {**default_kwargs, **self.optimizer_kwargs}
-            optimizer = MIPROv2(**merged_kwargs)
-        else:
-            # Get optimizer class from Teleprompter subclasses
-            teleprompter_classes = self._get_teleprompter_subclasses()
-            if self.optimizer_type not in teleprompter_classes:
-                valid_optimizers = sorted(teleprompter_classes.keys())
-                raise ValueError(
-                    f"Unknown optimizer_type: {self.optimizer_type}. "
-                    f"Valid options: {valid_optimizers}"
-                )
-
-            optimizer_class = teleprompter_classes[self.optimizer_type]
-            # Use default kwargs (just metric) and merge with user-provided kwargs
-            default_kwargs = {"metric": metric}
-            # For BootstrapFewShot with small datasets, limit bootstrapped demos to avoid bugs
-            if self.optimizer_type == "bootstrapfewshot" and len(self.examples) < 5:
-                default_kwargs["max_bootstrapped_demos"] = min(2, len(self.examples) - 1)
-            merged_kwargs = {**default_kwargs, **self.optimizer_kwargs}
-            optimizer = optimizer_class(**merged_kwargs)
+        if self.verbose and self.custom_optimizer is not None:
+            print(f"Using custom optimizer: {type(optimizer).__name__}")
 
         # Evaluate baseline (original prompts and descriptions) on validation set
         if self.verbose:
