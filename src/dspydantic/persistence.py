@@ -37,7 +37,7 @@ try:
 
     __version__ = version("dspydantic")
 except Exception:
-    __version__ = "0.0.0"
+    __version__ = "0.1.2"
 
 
 class PersistenceError(Exception):
