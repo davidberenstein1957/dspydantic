@@ -287,8 +287,10 @@ class Prompter:
             exclude_fields: Field names to exclude from evaluation.
             include_fields: Field names to include (only these are optimized/scored).
             evaluator_config: Evaluator configuration dict.
-            sequential: If True (default), optimize each field independently
-                (deepest-first), then prompts. If False, single-pass optimization.
+            fast: If False (default), optimize each field independently
+                (deepest-first), then prompts. If True, single-pass optimization.
+            on_progress: Optional callback to receive FieldOptimizationProgress updates.
+                Called automatically when verbose=True.
             **kwargs: Additional kwargs passed to PydanticOptimizer.
 
         Returns:
