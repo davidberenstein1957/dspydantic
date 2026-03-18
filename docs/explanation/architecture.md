@@ -205,6 +205,6 @@ Potential improvements:
 
 ## Further Reading
 
-- [How Optimization Works](optimization.md)
-- [Understanding Evaluators](evaluators.md)
+- [How Optimization Works](how-optimization-works.md)
+- [Understanding Evaluators](understanding-evaluators.md)
 - [Reference: API](../reference/api/prompter.md)

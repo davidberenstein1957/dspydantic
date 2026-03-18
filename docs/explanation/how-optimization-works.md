@@ -83,7 +83,7 @@ DSPy provides proven optimization algorithms that work well for prompt engineeri
 | **Ensemble** | N per input | - | Best | Reliability, variance reduction |
 | **BootstrapFinetune** | Variable | Slow | Best | 100+ examples, permanent improvements |
 
-See [Configure Optimizations](../guides/advanced/configure-optimizations.md) for detailed optimizer configuration.
+See [Configure Optimizations](../how-to/configure-optimizations.md) for detailed optimizer configuration.
 
 ### Why Field Descriptions?
 
@@ -162,9 +162,9 @@ The optimized descriptions and prompts are tailored to your use case. They may:
 
 ## Further Reading
 
-- [Configure Optimizations](../guides/advanced/configure-optimizations.md) - Fast/default modes, optimizers, threads
-- [Field Inclusion & Exclusion](../guides/advanced/field-exclusion.md) - Focus on specific fields
+- [Configure Optimizations](../how-to/configure-optimizations.md) - Fast/default modes, optimizers, threads
+- [Include/Exclude Fields](../how-to/include-exclude-fields.md) - Focus on specific fields
 - [Architecture](architecture.md) - System design details
-- [Understanding Evaluators](evaluators.md) - How evaluation works
-- [Your First Optimization](../guides/optimization/first-optimization.md) - Complete workflow
+- [Understanding Evaluators](understanding-evaluators.md) - How evaluation works
+- [Extract Structured Data](../tutorials/extract-structured-data.md) - Complete optimization workflow
 - [Reference: Prompter](../reference/api/prompter.md) - Technical details
