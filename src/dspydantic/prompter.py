@@ -266,7 +266,7 @@ class Prompter:
         exclude_fields: list[str] | None = None,
         include_fields: list[str] | None = None,
         evaluator_config: dict[str, Any] | None = None,
-        sequential: bool = True,
+        sequential: bool = False,
         parallel_fields: bool = True,
         max_val_examples: int | None = None,
         skip_score_threshold: float | None = None,
@@ -290,8 +290,8 @@ class Prompter:
             exclude_fields: Field names to exclude from evaluation.
             include_fields: Field names to include (only these are optimized/scored).
             evaluator_config: Evaluator configuration dict.
-            sequential: If True (default), optimize each field independently (deepest-first).
-                If False, use single-pass optimization (all fields together).
+            sequential: If False (default), use single-pass optimization (all fields together).
+                If True, optimize each field independently (deepest-first).
             parallel_fields: If True (default), parallelize field optimization
                 when sequential=True. Has no effect when sequential=False.
             max_val_examples: Optional cap on validation set size per field.

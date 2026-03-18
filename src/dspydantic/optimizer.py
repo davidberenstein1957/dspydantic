@@ -206,7 +206,7 @@ class PydanticOptimizer:
         exclude_fields: list[str] | None = None,
         include_fields: list[str] | None = None,
         evaluator_config: dict[str, Any] | None = None,
-        sequential: bool = True,
+        sequential: bool = False,
         parallel_fields: bool = True,
         max_val_examples: int | None = None,
         skip_score_threshold: float | None = None,
@@ -266,9 +266,9 @@ class PydanticOptimizer:
             evaluator_config: Optional evaluator configuration dict with "default" and
                 "field_overrides" keys. If provided, uses configured evaluators instead
                 of evaluate_fn/metric. Supports string names, config dicts, and custom classes.
-            sequential: If True (default), optimize each field description independently
-                (deepest-nested first) for maximum quality. If False, use single-pass optimization
-                (one DSPy compile for all fields) with reduced demo budgets for speed.
+            sequential: If False (default), use single-pass optimization (one DSPy compile
+                for all fields) with reduced demo budgets for speed. If True, optimize each
+                field description independently (deepest-nested first) for maximum quality.
             parallel_fields: If True (default), parallelize field optimization when using
                 sequential mode. Each field runs in a thread simultaneously. Has no effect
                 when sequential=False.
