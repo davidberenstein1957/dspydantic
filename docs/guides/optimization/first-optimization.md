@@ -145,7 +145,7 @@ prompter = Prompter(
 result = prompter.optimize(examples=examples)
 ```
 
-Optimization takes 1-5 minutes depending on example count. By default, each field is optimized independently (deepest-nested first), then prompts—this **sequential mode** reduces the search space. See [Configure Optimizations](../advanced/configure-optimizations.md) for `include_fields`, `exclude_fields`, and other options.
+Optimization takes 1-5 minutes depending on example count. By default, each field is optimized independently (deepest-nested first), then prompts—this **default mode** (`fast=False`) reduces the search space. See [Configure Optimizations](../advanced/configure-optimizations.md) for `fast`, `include_fields`, `exclude_fields`, and other options.
 
 ---
 

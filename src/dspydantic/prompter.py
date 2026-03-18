@@ -29,7 +29,7 @@ from dspydantic.extractor import (
 )
 from dspydantic.optimizer import PydanticOptimizer
 from dspydantic.persistence import load_prompter_state, save_prompter_state
-from dspydantic.types import Example, OptimizationResult, PrompterState
+from dspydantic.types import Example, FieldOptimizationProgress, OptimizationResult, PrompterState
 from dspydantic.utils import (
     build_image_signature_and_kwargs,
     convert_images_to_dspy_images,
@@ -266,7 +266,8 @@ class Prompter:
         exclude_fields: list[str] | None = None,
         include_fields: list[str] | None = None,
         evaluator_config: dict[str, Any] | None = None,
-        sequential: bool = True,
+        fast: bool = False,
+        on_progress: Callable[[FieldOptimizationProgress], None] | None = None,
         **kwargs: Any,
     ) -> OptimizationResult:
         """Optimize prompts and field descriptions.
@@ -306,7 +307,8 @@ class Prompter:
             exclude_fields=exclude_fields,
             include_fields=include_fields,
             evaluator_config=evaluator_config,
-            sequential=sequential,
+            fast=fast,
+            on_progress=on_progress,
             **kwargs,
         )
 

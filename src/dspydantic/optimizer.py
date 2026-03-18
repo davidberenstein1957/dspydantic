@@ -1,6 +1,7 @@
 """Main optimizer class for Pydantic models using DSPy."""
 
 import inspect
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -11,8 +12,16 @@ from pydantic import BaseModel
 from dspydantic.evaluators.functions import default_evaluate_fn
 from dspydantic.extractor import extract_field_descriptions, extract_field_types
 from dspydantic.module import PydanticOptimizerModule
-from dspydantic.types import Example, OptimizationResult, create_output_model
+from dspydantic.types import Example, FieldOptimizationProgress, OptimizationResult, create_output_model
 from dspydantic.utils import convert_images_to_dspy_images, format_instruction_prompt_template
+
+# Fast mode optimization kwargs: reduce demo count and optimizer complexity
+_FAST_MODE_KWARGS: dict[str, dict] = {
+    "bootstrapfewshot": {"max_bootstrapped_demos": 1},
+    "bootstrapfewshotwithrandomsearch": {"max_bootstrapped_demos": 1, "num_candidates": 4},
+    "miprov2": {"auto": "light", "max_bootstrapped_demos": 1},
+    "miprov2zeroshot": {"auto": "light"},
+}
 
 
 class PydanticOptimizer:
@@ -192,7 +201,8 @@ class PydanticOptimizer:
         exclude_fields: list[str] | None = None,
         include_fields: list[str] | None = None,
         evaluator_config: dict[str, Any] | None = None,
-        sequential: bool = True,
+        fast: bool = False,
+        on_progress: Callable[[FieldOptimizationProgress], None] | None = None,
     ) -> None:
         """Initialize the Pydantic optimizer.
 
@@ -248,9 +258,11 @@ class PydanticOptimizer:
             evaluator_config: Optional evaluator configuration dict with "default" and
                 "field_overrides" keys. If provided, uses configured evaluators instead
                 of evaluate_fn/metric. Supports string names, config dicts, and custom classes.
-            sequential: If True (default), optimize each field description independently
-                (deepest-nested first), then optimize prompts. Reduces search space per run.
-                If False, use single-pass optimization (all fields and prompts together).
+            fast: If False (default), optimize each field description independently
+                (deepest-nested first) for maximum quality. Reduces search space per run.
+                If True, use single-pass optimization with reduced demo budgets for speed.
+            on_progress: Optional callback invoked after each field/phase optimization.
+                Receives a FieldOptimizationProgress object with field_path, score updates, etc.
 
         Raises:
             ValueError: If at least one example is not provided, or if optimizer string
@@ -291,7 +303,22 @@ class PydanticOptimizer:
         self.verbose = verbose
         self.train_split = train_split
         self.optimizer_kwargs = optimizer_kwargs or {}
-        self.sequential = sequential
+        self.fast = fast
+        self.on_progress = on_progress
+
+        # Add default progress callback if verbose and no callback provided
+        if verbose and on_progress is None:
+            def _default_progress(p: FieldOptimizationProgress):
+                if p.phase == "fields":
+                    status = "✓" if p.improved else "–"
+                    print(f"    {p.field_path}: {p.score_before:.0%} → {p.score_after:.0%} {status}")
+                elif p.phase in ("system_prompt", "instruction_prompt"):
+                    status = "✓" if p.improved else "–"
+                    print(f"    {p.phase}: {p.score_before:.0%} → {p.score_after:.0%} {status}")
+            self.on_progress = _default_progress
+
+        # fast=False → sequential field-by-field; fast=True → single-pass + fast kwargs
+        self.sequential = not fast
 
         # Handle optimizer parameter (can be string or Teleprompter instance)
         if optimizer is None:
@@ -319,6 +346,12 @@ class PydanticOptimizer:
                 f"optimizer must be a string, Teleprompter instance, or None, "
                 f"got {type(optimizer).__name__}"
             )
+
+        # Apply fast mode optimizer kwargs after optimizer_type is determined
+        if self.fast and self.optimizer_type != "custom":
+            fast_defaults = _FAST_MODE_KWARGS.get(self.optimizer_type, {})
+            # User-supplied optimizer_kwargs override fast defaults
+            self.optimizer_kwargs = {**fast_defaults, **self.optimizer_kwargs}
 
         # Extract field descriptions from Pydantic model
         # Field descriptions are automatically set from field names if not provided
@@ -832,6 +865,13 @@ class PydanticOptimizer:
             )
         optimizer_class = teleprompter_classes[self.optimizer_type]
         default_kwargs = {"metric": metric}
+        # Fix: pass num_threads to all optimizers that support it (not just MIPROv2)
+        try:
+            sig = inspect.signature(optimizer_class.__init__)
+            if "num_threads" in sig.parameters:
+                default_kwargs["num_threads"] = self.num_threads
+        except (ValueError, TypeError):
+            pass
         if self.optimizer_type == "bootstrapfewshot" and len(self.examples) < 5:
             default_kwargs["max_bootstrapped_demos"] = max(1, min(2, len(self.examples) - 1))
         return optimizer_class(**{**default_kwargs, **self.optimizer_kwargs})
@@ -1093,6 +1133,21 @@ class PydanticOptimizer:
         optimized_demos: list[dict[str, Any]],
     ) -> OptimizationResult:
         """Run sequential optimization: fields deepest-first, then prompts."""
+        _t0 = time.perf_counter()
+
+        def _emit(phase, score_before, score_after, field_path=None, field_index=None):
+            if self.on_progress is None:
+                return
+            try:
+                self.on_progress(FieldOptimizationProgress(
+                    phase=phase, score_before=score_before, score_after=score_after,
+                    improved=score_after > score_before, total_fields=total_fields,
+                    field_path=field_path, field_index=field_index,
+                    elapsed_seconds=time.perf_counter() - _t0,
+                ))
+            except Exception:
+                pass  # never abort optimization due to callback error
+
         baseline_scores = []
         for val_ex in val_examples:
             example_obj = self._dspy_example_to_example(val_ex)
@@ -1114,6 +1169,8 @@ class PydanticOptimizer:
         sorted_fields = self._sort_fields_by_depth()
         total_fields = len(sorted_fields)
 
+        _emit("baseline", baseline_avg, baseline_avg)
+
         for idx, field_path in enumerate(sorted_fields, 1):
             depth = field_path.count(".")
             if self.verbose:
@@ -1122,6 +1179,7 @@ class PydanticOptimizer:
                     end="",
                     flush=True,
                 )
+            score_before = current_score
             new_desc, new_score = self._optimize_single_field(
                 field_path=field_path,
                 current_descriptions=current_descriptions,
@@ -1139,6 +1197,7 @@ class PydanticOptimizer:
                 else:
                     print(f"{current_score:.2%} (no improvement)")
             current_score = new_score
+            _emit("fields", score_before, new_score, field_path=field_path, field_index=idx)
 
         optimized_system_prompt = self.system_prompt
         optimized_instruction_prompt = self.instruction_prompt
@@ -1146,6 +1205,7 @@ class PydanticOptimizer:
         if self.system_prompt is not None:
             if self.verbose:
                 print("\nPhase 2a: Optimizing system_prompt ... ", end="", flush=True)
+            score_before_sys = current_score
             optimized_system_prompt, current_score = self._optimize_prompt(
                 "system",
                 current_descriptions,
@@ -1159,10 +1219,12 @@ class PydanticOptimizer:
             )
             if self.verbose:
                 print(f"{current_score:.2%}")
+            _emit("system_prompt", score_before_sys, current_score)
 
         if self.instruction_prompt is not None:
             if self.verbose:
                 print("Phase 2b: Optimizing instruction_prompt ... ", end="", flush=True)
+            score_before_instr = current_score
             optimized_instruction_prompt, current_score = self._optimize_prompt(
                 "instruction",
                 current_descriptions,
@@ -1176,6 +1238,7 @@ class PydanticOptimizer:
             )
             if self.verbose:
                 print(f"{current_score:.2%}")
+            _emit("instruction_prompt", score_before_instr, current_score)
 
         improvement = current_score - baseline_avg
         improvement_pct = (improvement / baseline_avg * 100) if baseline_avg > 0 else 0.0
@@ -1218,6 +1281,8 @@ class PydanticOptimizer:
             if total_tokens > 0:
                 print(f"Total tokens: {total_tokens:,}")
             print(f"{'=' * 60}\n")
+
+        _emit("complete", baseline_avg, current_score)
 
         return OptimizationResult(
             optimized_descriptions=current_descriptions,

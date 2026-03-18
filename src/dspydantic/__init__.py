@@ -1,6 +1,6 @@
 """dspydantic - Optimize Pydantic model field descriptions using DSPy."""
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 
 # Import evaluators package to trigger registration - must be done before importing classes
 import dspydantic.evaluators  # noqa: F401
@@ -29,7 +29,13 @@ from dspydantic.extractor import (
 from dspydantic.optimizer import PydanticOptimizer
 from dspydantic.persistence import PersistenceError
 from dspydantic.prompter import ExtractionResult, Prompter
-from dspydantic.types import Example, OptimizationResult, PrompterState, create_output_model
+from dspydantic.types import (
+    Example,
+    FieldOptimizationProgress,
+    OptimizationResult,
+    PrompterState,
+    create_output_model,
+)
 from dspydantic.utils import (
     image_to_base64,
     pdf_to_base64_images,
@@ -42,6 +48,7 @@ __all__ = [
     "ExtractionResult",
     "Example",
     "OptimizationResult",
+    "FieldOptimizationProgress",
     "PrompterState",
     "PersistenceError",
     "extract_field_descriptions",

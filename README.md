@@ -87,7 +87,7 @@ result = prompter.optimize(examples=examples)
 print(f"Accuracy: {result.baseline_score:.0%} → {result.optimized_score:.0%}")
 ```
 
-By default, optimization uses **sequential mode**: each field description is optimized independently (deepest-nested first), then prompts. This reduces the search space and often yields better results.
+By default, optimization uses **default mode** (`fast=False`): each field description is optimized independently (deepest-nested first), then prompts. This reduces the search space and often yields better results. For faster optimization with lower API costs, use `fast=True` for single-pass optimization with reduced demo budgets.
 
 ### Deploy to Production
 
@@ -140,10 +140,10 @@ result = prompter.optimize(
     exclude_fields=["metadata", "timestamp"],
 )
 
-# Single-pass mode (all fields at once, legacy behavior)
+# Fast mode (single-pass optimization with reduced demo budgets)
 result = prompter.optimize(
     examples=examples,
-    sequential=False,
+    fast=True,
 )
 ```
 
@@ -170,7 +170,7 @@ if result.confidence > 0.9:
 Full documentation at [davidberenstein1957.github.io/dspydantic](https://davidberenstein1957.github.io/dspydantic/)
 
 - [Getting Started](https://davidberenstein1957.github.io/dspydantic/guides/optimization/first-optimization/) - First extraction in 5 minutes
-- [Configure Optimizations](https://davidberenstein1957.github.io/dspydantic/guides/advanced/configure-optimizations/) - Optimizers, sequential mode, threads
+- [Configure Optimizations](https://davidberenstein1957.github.io/dspydantic/guides/advanced/configure-optimizations/) - Optimizers, fast/default modes, threads
 - [Field Inclusion & Exclusion](https://davidberenstein1957.github.io/dspydantic/guides/advanced/field-exclusion/) - Focus optimization on specific fields
 - [API Reference](https://davidberenstein1957.github.io/dspydantic/reference/api/prompter/) - Full documentation
 
