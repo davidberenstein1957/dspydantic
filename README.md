@@ -83,11 +83,16 @@ examples = [
     # 5-20 examples typically enough
 ]
 
-result = prompter.optimize(examples=examples)
+result = prompter.optimize(examples=examples, verbose=True)
 print(f"Accuracy: {result.baseline_score:.0%} → {result.optimized_score:.0%}")
 ```
 
-By default, optimization uses **single-pass mode**: one DSPy compile for all fields with reduced demo budgets for maximum speed. For better quality at the cost of more API calls, use `sequential=True` to optimize each field description independently (deepest-nested first), then prompts.
+**Monitor progress in real-time** with `verbose=True` to see:
+- Rich-formatted optimization progress
+- Actual optimized descriptions after each field optimization
+- Final summary with scores, API calls, and token usage
+
+By default, optimization uses **single-pass mode**: one DSPy compile for all fields with reduced demo budgets for maximum speed. For better quality at the cost of more API calls, use `sequential=True` to optimize each field description independently (deepest-nested first), then prompts. With `parallel_fields=True` (default), fields are optimized in parallel for speed.
 
 ### Deploy to Production
 

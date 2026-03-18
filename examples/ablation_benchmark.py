@@ -158,10 +158,10 @@ def main():
     print(f"Loaded {len(examples)} examples")
 
     configs = [
-        ("Single-pass (default)", {"sequential": False}),
-        ("Sequential", {"sequential": True, "parallel_fields": False}),
-        ("Sequential + Parallel", {"sequential": True, "parallel_fields": True}),
-        ("Sequential + Max Val=5", {"sequential": True, "parallel_fields": False, "max_val_examples": 5}),
+        # ("Single-pass (default)", {"sequential": False}),
+        # ("Sequential", {"sequential": True, "parallel_fields": False}),
+        ("Sequential + Parallel", {"sequential": False, "parallel_fields": True}),
+        # ("Sequential + Max Val=5", {"sequential": True, "parallel_fields": False, "max_val_examples": 5}),
     ]
 
     results = []

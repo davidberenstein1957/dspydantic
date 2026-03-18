@@ -170,6 +170,49 @@ The optimized descriptions and prompts are tailored to your use case. They may:
 - Be longer or shorter depending on what works
 - Work synergistically together
 
+## Tracking Optimization Progress
+
+### Verbose Output
+
+Enable `verbose=True` to see real-time optimization progress with rich-formatted output:
+
+```python
+result = prompter.optimize(examples=examples, verbose=True)
+```
+
+This displays:
+- **Header** showing model, field count, and optimization mode
+- **Real-time progress** for each field and prompt optimization
+- **Optimized values** showing the actual descriptions and prompts that were generated
+- **Summary table** with final scores, improvements, API calls, and tokens used
+
+### Custom Progress Tracking
+
+For programmatic progress tracking, use the `on_progress` callback:
+
+```python
+from dspydantic import FieldOptimizationProgress
+
+def track_progress(progress: FieldOptimizationProgress):
+    if progress.phase == "fields":
+        # Field optimization complete
+        print(f"{progress.field_path}: {progress.score_before:.0%} → {progress.score_after:.0%}")
+        if progress.optimized_value:
+            print(f"  → {progress.optimized_value!r}")
+    elif progress.phase == "complete":
+        # Optimization finished
+        print(f"Done in {progress.elapsed_seconds:.1f}s")
+
+result = prompter.optimize(examples=examples, on_progress=track_progress)
+```
+
+The `FieldOptimizationProgress` object provides:
+- `phase`: Current optimization phase
+- `score_before` / `score_after`: Scores at each step
+- `optimized_value`: The actual optimized text that was generated
+- `elapsed_seconds`: Time elapsed since optimization started
+- `improved`: Whether the score went up
+
 ## Further Reading
 
 - [Configure Optimizations](../guides/advanced/configure-optimizations.md) - Single-pass/sequential modes, optimizers, parallelization, threads
