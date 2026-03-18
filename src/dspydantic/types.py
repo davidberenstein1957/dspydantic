@@ -43,7 +43,13 @@ class FieldOptimizationProgress:
     """Progress update emitted during field-by-field optimization.
 
     Attributes:
-        phase: Current optimization phase ("baseline", "fields", "system_prompt", "instruction_prompt", "complete").
+        phase: Current optimization phase. Valid values:
+            - "baseline": Initial evaluation before optimization
+            - "fields": Field description optimization
+            - "skipped": Field was skipped (already above threshold)
+            - "system_prompt": System prompt optimization
+            - "instruction_prompt": Instruction prompt optimization
+            - "complete": Optimization finished
         score_before: Score before this optimization step.
         score_after: Score after this optimization step.
         improved: True if score improved.

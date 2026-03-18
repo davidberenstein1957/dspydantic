@@ -3,6 +3,7 @@
 import inspect
 import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 import dspy
@@ -201,7 +202,10 @@ class PydanticOptimizer:
         exclude_fields: list[str] | None = None,
         include_fields: list[str] | None = None,
         evaluator_config: dict[str, Any] | None = None,
-        fast: bool = False,
+        sequential: bool = False,
+        parallel_fields: bool = True,
+        max_val_examples: int | None = None,
+        skip_score_threshold: float | None = None,
         on_progress: Callable[[FieldOptimizationProgress], None] | None = None,
     ) -> None:
         """Initialize the Pydantic optimizer.
@@ -258,9 +262,16 @@ class PydanticOptimizer:
             evaluator_config: Optional evaluator configuration dict with "default" and
                 "field_overrides" keys. If provided, uses configured evaluators instead
                 of evaluate_fn/metric. Supports string names, config dicts, and custom classes.
-            fast: If False (default), optimize each field description independently
-                (deepest-nested first) for maximum quality. Reduces search space per run.
-                If True, use single-pass optimization with reduced demo budgets for speed.
+            sequential: If False (default), use single-pass optimization (one DSPy compile
+                for all fields) with reduced demo budgets for speed. If True, optimize each
+                field description independently (deepest-nested first) for maximum quality.
+            parallel_fields: If True (default), parallelize field optimization when using
+                sequential mode. Each field runs in a thread simultaneously. Has no effect
+                when sequential=False.
+            max_val_examples: Optional cap on validation set size. When set, uses only the
+                first N validation examples per field optimization, reducing scoring LLM calls.
+            skip_score_threshold: Optional threshold (0.0-1.0). When set in sequential mode,
+                skips optimizing fields that already score above this baseline threshold.
             on_progress: Optional callback invoked after each field/phase optimization.
                 Receives a FieldOptimizationProgress object with field_path, score updates, etc.
 
@@ -303,7 +314,10 @@ class PydanticOptimizer:
         self.verbose = verbose
         self.train_split = train_split
         self.optimizer_kwargs = optimizer_kwargs or {}
-        self.fast = fast
+        self.sequential = sequential
+        self.parallel_fields = parallel_fields
+        self.max_val_examples = max_val_examples
+        self.skip_score_threshold = skip_score_threshold
         self.on_progress = on_progress
 
         # Add default progress callback if verbose and no callback provided
@@ -312,13 +326,12 @@ class PydanticOptimizer:
                 if p.phase == "fields":
                     status = "✓" if p.improved else "–"
                     print(f"    {p.field_path}: {p.score_before:.0%} → {p.score_after:.0%} {status}")
+                elif p.phase == "skipped":
+                    print(f"    {p.field_path}: skipped (score {p.score_before:.0%} >= threshold)")
                 elif p.phase in ("system_prompt", "instruction_prompt"):
                     status = "✓" if p.improved else "–"
                     print(f"    {p.phase}: {p.score_before:.0%} → {p.score_after:.0%} {status}")
             self.on_progress = _default_progress
-
-        # fast=False → sequential field-by-field; fast=True → single-pass + fast kwargs
-        self.sequential = not fast
 
         # Handle optimizer parameter (can be string or Teleprompter instance)
         if optimizer is None:
@@ -347,8 +360,9 @@ class PydanticOptimizer:
                 f"got {type(optimizer).__name__}"
             )
 
-        # Apply fast mode optimizer kwargs after optimizer_type is determined
-        if self.fast and self.optimizer_type != "custom":
+        # Apply fast mode optimizer kwargs by default (when not sequential)
+        # Sequential mode can still use them but doesn't require them
+        if not self.sequential and self.optimizer_type != "custom":
             fast_defaults = _FAST_MODE_KWARGS.get(self.optimizer_type, {})
             # User-supplied optimizer_kwargs override fast defaults
             self.optimizer_kwargs = {**fast_defaults, **self.optimizer_kwargs}
@@ -885,6 +899,66 @@ class PydanticOptimizer:
         except (ValueError, TypeError):
             return False
 
+    def _optimize_fields_parallel(
+        self,
+        sorted_fields: list[str],
+        current_descriptions: dict[str, str],
+        train_examples: list[dspy.Example],
+        val_examples: list[dspy.Example],
+        evaluate_fn: Callable[..., float],
+        baseline_avg: float,
+        optimized_demos: list[dict[str, Any]],
+        _emit: Callable[..., None],
+    ) -> None:
+        """Optimize multiple fields in parallel threads.
+
+        Updates current_descriptions in place with optimized descriptions from all fields.
+        Each field optimization runs independently with a snapshot of current_descriptions.
+        """
+        total_fields = len(sorted_fields)
+
+        def optimize_field_task(idx_and_path: tuple[int, str]) -> tuple[str, str, float]:
+            """Optimize a single field and return (field_path, optimized_desc, score)."""
+            idx, field_path = idx_and_path
+            depth = field_path.count(".")
+            if self.verbose:
+                print(
+                    f"  Field {idx}/{total_fields}: {field_path} (depth {depth}) ... ",
+                    end="",
+                    flush=True,
+                )
+
+            score_before = baseline_avg  # Each field optimizes from baseline independently
+            new_desc, new_score = self._optimize_single_field(
+                field_path=field_path,
+                current_descriptions=current_descriptions,  # Snapshot at start
+                train_examples=train_examples,
+                val_examples=val_examples,
+                evaluate_fn=evaluate_fn,
+                baseline_score=baseline_avg,
+                optimized_demos=optimized_demos,
+            )
+            improved = new_score > baseline_avg
+            if self.verbose:
+                if improved:
+                    print(f"{baseline_avg:.2%} → {new_score:.2%} ✓")
+                else:
+                    print(f"{baseline_avg:.2%} (no improvement)")
+
+            _emit("fields", score_before, new_score, field_path=field_path, field_index=idx)
+            return field_path, new_desc, new_score
+
+        # Run all field optimizations in parallel
+        with ThreadPoolExecutor(max_workers=self.num_threads) as executor:
+            futures = {
+                executor.submit(optimize_field_task, (idx, fp)): fp
+                for idx, fp in enumerate(sorted_fields, 1)
+            }
+
+            for future in as_completed(futures):
+                field_path, new_desc, _ = future.result()
+                current_descriptions[field_path] = new_desc
+
     def _optimize_single_field(
         self,
         field_path: str,
@@ -1171,33 +1245,87 @@ class PydanticOptimizer:
 
         _emit("baseline", baseline_avg, baseline_avg)
 
-        for idx, field_path in enumerate(sorted_fields, 1):
-            depth = field_path.count(".")
-            if self.verbose:
-                print(
-                    f"  Field {idx}/{total_fields}: {field_path} (depth {depth}) ... ",
-                    end="",
-                    flush=True,
-                )
-            score_before = current_score
-            new_desc, new_score = self._optimize_single_field(
-                field_path=field_path,
+        # Slice val_examples if max_val_examples is set
+        effective_val_examples = val_examples
+        if self.max_val_examples is not None:
+            effective_val_examples = val_examples[:self.max_val_examples]
+            if self.verbose and len(effective_val_examples) < len(val_examples):
+                print(f"(Using {len(effective_val_examples)}/{len(val_examples)} validation examples)")
+
+        if self.parallel_fields:
+            # Parallel field optimization
+            self._optimize_fields_parallel(
+                sorted_fields=sorted_fields,
                 current_descriptions=current_descriptions,
                 train_examples=train_examples,
-                val_examples=val_examples,
+                val_examples=effective_val_examples,
                 evaluate_fn=evaluate_fn,
-                baseline_score=current_score,
+                baseline_avg=baseline_avg,
                 optimized_demos=optimized_demos,
+                _emit=_emit,
             )
-            improved = new_score > current_score
-            current_descriptions[field_path] = new_desc
-            if self.verbose:
-                if improved:
-                    print(f"{current_score:.2%} → {new_score:.2%} ✓")
-                else:
-                    print(f"{current_score:.2%} (no improvement)")
-            current_score = new_score
-            _emit("fields", score_before, new_score, field_path=field_path, field_index=idx)
+            # After parallel optimization, recalculate current_score
+            scores = []
+            for val_ex in effective_val_examples:
+                example_obj = self._dspy_example_to_example(val_ex)
+                score = evaluate_fn(
+                    example_obj,
+                    current_descriptions,
+                    self.system_prompt,
+                    self.instruction_prompt,
+                )
+                scores.append(score)
+            current_score = sum(scores) / len(scores) if scores else baseline_avg
+        else:
+            # Sequential field optimization (original behavior)
+            for idx, field_path in enumerate(sorted_fields, 1):
+                depth = field_path.count(".")
+                if self.verbose:
+                    print(
+                        f"  Field {idx}/{total_fields}: {field_path} (depth {depth}) ... ",
+                        end="",
+                        flush=True,
+                    )
+
+                # Check skip threshold
+                if self.skip_score_threshold is not None:
+                    field_baseline_scores = []
+                    for val_ex in effective_val_examples:
+                        example_obj = self._dspy_example_to_example(val_ex)
+                        score = evaluate_fn(
+                            example_obj,
+                            current_descriptions,
+                            self.system_prompt,
+                            self.instruction_prompt,
+                        )
+                        field_baseline_scores.append(score)
+                    field_baseline = sum(field_baseline_scores) / len(field_baseline_scores) if field_baseline_scores else 0.0
+
+                    if field_baseline >= self.skip_score_threshold:
+                        if self.verbose:
+                            print(f"{field_baseline:.2%} (skipped, already above {self.skip_score_threshold:.0%})")
+                        _emit("skipped", field_baseline, field_baseline, field_path=field_path, field_index=idx)
+                        continue
+
+                score_before = current_score
+                new_desc, new_score = self._optimize_single_field(
+                    field_path=field_path,
+                    current_descriptions=current_descriptions,
+                    train_examples=train_examples,
+                    val_examples=effective_val_examples,
+                    evaluate_fn=evaluate_fn,
+                    baseline_score=current_score,
+                    optimized_demos=optimized_demos,
+                )
+                improved = new_score > current_score
+                current_descriptions[field_path] = new_desc
+                if self.verbose:
+                    if improved:
+                        print(f"{current_score:.2%} → {new_score:.2%} ✓")
+                    else:
+                        print(f"{current_score:.2%} (no improvement)")
+                current_score = new_score
+                _emit("fields", score_before, new_score, field_path=field_path, field_index=idx)
 
         optimized_system_prompt = self.system_prompt
         optimized_instruction_prompt = self.instruction_prompt
@@ -1212,7 +1340,7 @@ class PydanticOptimizer:
                 optimized_system_prompt,
                 optimized_instruction_prompt,
                 train_examples,
-                val_examples,
+                effective_val_examples,
                 evaluate_fn,
                 current_score,
                 optimized_demos,
@@ -1231,7 +1359,7 @@ class PydanticOptimizer:
                 optimized_system_prompt,
                 optimized_instruction_prompt,
                 train_examples,
-                val_examples,
+                effective_val_examples,
                 evaluate_fn,
                 current_score,
                 optimized_demos,

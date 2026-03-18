@@ -266,7 +266,10 @@ class Prompter:
         exclude_fields: list[str] | None = None,
         include_fields: list[str] | None = None,
         evaluator_config: dict[str, Any] | None = None,
-        fast: bool = False,
+        sequential: bool = False,
+        parallel_fields: bool = True,
+        max_val_examples: int | None = None,
+        skip_score_threshold: float | None = None,
         on_progress: Callable[[FieldOptimizationProgress], None] | None = None,
         **kwargs: Any,
     ) -> OptimizationResult:
@@ -287,8 +290,13 @@ class Prompter:
             exclude_fields: Field names to exclude from evaluation.
             include_fields: Field names to include (only these are optimized/scored).
             evaluator_config: Evaluator configuration dict.
-            fast: If False (default), optimize each field independently
-                (deepest-first), then prompts. If True, single-pass optimization.
+            sequential: If False (default), use single-pass optimization.
+                If True, optimize each field independently (deepest-first).
+            parallel_fields: If True (default), parallelize field optimization
+                when sequential=True. Has no effect when sequential=False.
+            max_val_examples: Optional cap on validation set size per field.
+            skip_score_threshold: Optional threshold to skip high-scoring fields
+                (sequential mode only).
             on_progress: Optional callback to receive FieldOptimizationProgress updates.
                 Called automatically when verbose=True.
             **kwargs: Additional kwargs passed to PydanticOptimizer.
@@ -309,7 +317,10 @@ class Prompter:
             exclude_fields=exclude_fields,
             include_fields=include_fields,
             evaluator_config=evaluator_config,
-            fast=fast,
+            sequential=sequential,
+            parallel_fields=parallel_fields,
+            max_val_examples=max_val_examples,
+            skip_score_threshold=skip_score_threshold,
             on_progress=on_progress,
             **kwargs,
         )
