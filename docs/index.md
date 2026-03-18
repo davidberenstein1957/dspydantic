@@ -174,53 +174,48 @@ else:
 
 ---
 
-## Get Started
+## Documentation Sections
 
-| Guide | Description |
-|-------|-------------|
-| [**Getting Started**](guides/optimization/first-optimization.md) | First extraction in 5 minutes |
-| [**Core Concepts**](core-concepts.md) | Understand optimization and evaluation |
-| [**Modalities**](guides/optimization/modalities.md) | Text, images, and PDFs |
-| [**Production**](guides/advanced/save-load.md) | Save, load, batch, and async |
+### [Tutorials](tutorials/index.md) — Learn by Doing
 
----
+Start here! Step-by-step guides that teach you DSPydantic:
 
-## Guides
+- [Quickstart](tutorials/quickstart.md) - Your first extraction in 5 minutes
+- [Configure a Language Model](tutorials/configure-language-models.md) - Set up OpenAI, Anthropic, or local models
+- [Extract Free-form Text](tutorials/extract-free-form-text.md) - String output without a schema
+- [Extract Structured Data](tutorials/extract-structured-data.md) - Complete optimization workflow
+- [Optimize with Prompt Templates](tutorials/use-prompt-templates.md) - Dynamic prompts with placeholders
 
-### Optimization
+### [How-to Guides](how-to/index.md) — Solve Specific Tasks
 
-- [Your First Optimization](guides/optimization/first-optimization.md) - Complete workflow
-- [Optimization Modalities](guides/optimization/modalities.md) - Text, images, PDFs
-- [Prompt Templates](guides/optimization/prompt-templates.md) - Dynamic prompts with placeholders
-- [Without Pydantic Schema](guides/optimization/without-pydantic-schema.md) - String output
+Task-oriented guides for real-world scenarios:
 
-### Evaluators
+- [Use Images and PDFs](how-to/use-multimodal-inputs.md) - Extract from images and documents
+- [Configure Evaluators](how-to/configure-evaluators.md) - Customize evaluation metrics
+- [Build a Custom Evaluator](how-to/build-custom-evaluators.md) - Domain-specific logic
+- [Deploy to Production](how-to/deploy-to-production.md) - Docker, FastAPI, AWS Lambda
+- [Integrate with Applications](how-to/integrate-with-applications.md) - Real-world patterns
 
-- [Configure Evaluators](guides/evaluators/configure.md) - Per-field evaluation
-- [Evaluator Selection](guides/evaluators/selection.md) - Choose the right evaluator
-- [Custom Evaluators](guides/evaluators/custom.md) - Build your own
+### [Explanation](explanation/index.md) — Understand the Concepts
 
-### Advanced
+Deep dives into how DSPydantic works:
 
-- [Nested Models](guides/advanced/nested-models.md) - Complex schemas
-- [Field Inclusion & Exclusion](guides/advanced/field-exclusion.md) - Focus optimization on specific fields
-- [Save and Load](guides/advanced/save-load.md) - Production deployment
+- [Key Concepts](explanation/key-concepts.md) - Prompter, Examples, Optimization, Evaluators
+- [How Optimization Works](explanation/how-optimization-works.md) - The optimization process explained
+- [Understanding Evaluators](explanation/understanding-evaluators.md) - Evaluation strategies
+- [Choosing an Evaluator](explanation/choosing-an-evaluator.md) - Decision guide
+- [Architecture](explanation/architecture.md) - System design
 
----
+### [Reference](reference/index.md) — Lookup Tables & API
 
-## Concepts
+Complete API documentation and reference:
 
-- [How Optimization Works](concepts/optimization.md) - Deep dive
-- [Understanding Evaluators](concepts/evaluators.md) - Evaluation strategies
-- [Architecture](concepts/architecture.md) - System design
-
----
-
-## API Reference
-
-- [Prompter](reference/api/prompter.md) - Main interface
+- [Input Formats](reference/input-formats.md) - Text, images, PDFs, templates
+- [Optimizers](reference/optimizers.md) - DSPy optimizer types
+- [Evaluator Selection](reference/evaluator-selection.md) - Quick lookup tables
+- [Prompter API](reference/api/prompter.md) - Main interface
 - [Types](reference/api/types.md) - Example, OptimizationResult
-- [Extractor](reference/api/extractor.md) - Field extraction
+- [Extractor](reference/api/extractor.md) - Field extraction utilities
 - [Evaluators](reference/api/evaluators.md) - Evaluation system
 
 ---

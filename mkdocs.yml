@@ -87,34 +87,44 @@ markdown_extensions:
       permalink: true
 
 nav:
-  - Home:
-    - index.md
-    - Core Concepts: core-concepts.md
-  - Guides:
-    - Getting Started: guides/optimization/first-optimization.md
-    - Input Formats:
-      - Modalities Overview: guides/optimization/modalities.md
-      - With Pydantic Schema: guides/optimization/with-pydantic-schema.md
-      - Without Pydantic Schema: guides/optimization/without-pydantic-schema.md
-      - Prompt Templates: guides/optimization/prompt-templates.md
-    - Evaluators:
-      - Configure Evaluators: guides/evaluators/configure.md
-      - Evaluator Selection: guides/evaluators/selection.md
-      - Custom Evaluators: guides/evaluators/custom.md
-    - Advanced:
-      - Configure Optimizations: guides/advanced/configure-optimizations.md
-      - Configure Models: guides/advanced/configure-models.md
-      - Nested Models: guides/advanced/nested-models.md
-      - Field Inclusion & Exclusion: guides/advanced/field-exclusion.md
-      - Save and Load: guides/advanced/save-load.md
-      - Integration Patterns: guides/advanced/integration-patterns.md
-  - Concepts:
-    - How Optimization Works: concepts/optimization.md
-    - Understanding Evaluators: concepts/evaluators.md
-    - Architecture: concepts/architecture.md
-  - API Reference:
-    - Prompter: reference/api/prompter.md
-    - Types: reference/api/types.md
-    - Extractor: reference/api/extractor.md
-    - Evaluators: reference/api/evaluators.md
+  - Home: index.md
+
+  - Tutorials:
+    - tutorials/index.md
+    - Quickstart: tutorials/quickstart.md
+    - Configure a Language Model: tutorials/configure-language-models.md
+    - Extract Free-form Text: tutorials/extract-free-form-text.md
+    - Extract Structured Data: tutorials/extract-structured-data.md
+    - Optimize with Prompt Templates: tutorials/use-prompt-templates.md
+
+  - How-to Guides:
+    - how-to/index.md
+    - Use Images and PDFs: how-to/use-multimodal-inputs.md
+    - Optimize Nested Models: how-to/optimize-nested-models.md
+    - Include or Exclude Fields: how-to/include-exclude-fields.md
+    - Configure Evaluators: how-to/configure-evaluators.md
+    - Build a Custom Evaluator: how-to/build-custom-evaluators.md
+    - Configure Optimization Parameters: how-to/configure-optimizations.md
+    - Save and Load a Prompter: how-to/save-and-load.md
+    - Deploy to Production: how-to/deploy-to-production.md
+    - Integrate with Applications: how-to/integrate-with-applications.md
+
+  - Explanation:
+    - explanation/index.md
+    - Key Concepts: explanation/key-concepts.md
+    - How Optimization Works: explanation/how-optimization-works.md
+    - Understanding Evaluators: explanation/understanding-evaluators.md
+    - Choosing an Evaluator: explanation/choosing-an-evaluator.md
+    - Architecture: explanation/architecture.md
+
+  - Reference:
+    - reference/index.md
+    - Input Formats: reference/input-formats.md
+    - Optimizers: reference/optimizers.md
+    - Evaluator Selection: reference/evaluator-selection.md
+    - API:
+      - Prompter: reference/api/prompter.md
+      - Types: reference/api/types.md
+      - Extractor: reference/api/extractor.md
+      - Evaluators: reference/api/evaluators.md
     - Changelog: https://github.com/davidberenstein1957/dspydantic/releases
