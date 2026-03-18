@@ -39,6 +39,31 @@ class OptimizationResult:
 
 
 @dataclass
+class FieldOptimizationProgress:
+    """Progress update emitted during field-by-field optimization.
+
+    Attributes:
+        phase: Current optimization phase ("baseline", "fields", "system_prompt", "instruction_prompt", "complete").
+        score_before: Score before this optimization step.
+        score_after: Score after this optimization step.
+        improved: True if score improved.
+        total_fields: Total number of fields being optimized.
+        field_path: Dot-notation path of the field just optimized (None for non-field phases).
+        field_index: 1-based index of the field (None for non-field phases).
+        elapsed_seconds: Wall-clock seconds elapsed since optimization started.
+    """
+
+    phase: str
+    score_before: float
+    score_after: float
+    improved: bool
+    total_fields: int
+    field_path: str | None = None
+    field_index: int | None = None
+    elapsed_seconds: float = 0.0
+
+
+@dataclass
 class PrompterState:
     """State of a Prompter instance for serialization.
 

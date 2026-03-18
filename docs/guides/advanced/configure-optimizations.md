@@ -11,27 +11,27 @@ This guide covers how to configure optimization parameters, choose the right DSP
 | Examples | - | 10-20 | Quality |
 | Threads | 4 | 4-8 | Speed |
 | Optimizer | Auto | Based on dataset | Quality/Cost |
-| Sequential | True | True | Smaller search space per run |
+| fast | False | False for quality, True for speed | Search space vs cost |
 | include_fields | None | As needed | Focus optimization |
 | exclude_fields | None | As needed | Skip metadata in scoring |
 
 ---
 
-## Sequential vs Single-Pass Optimization
+## Default vs Fast Mode Optimization
 
-By default, DSPydantic uses **sequential mode** (`sequential=True`):
+By default, DSPydantic uses **default mode** (`fast=False`):
 
 1. **Phase 1**: Optimize each field description independently, deepest-nested first. Each run has a minimal search space.
 2. **Phase 2**: Optimize system and instruction prompts with field descriptions fixed.
 
-This often yields better results than optimizing everything at once. Use `sequential=False` for the legacy single-pass behavior (all fields and prompts in one run).
+This often yields better results than optimizing everything at once. Use `fast=True` for single-pass optimization with reduced demo budgets — faster but lower quality.
 
 ```python
-# Default: sequential (recommended)
+# Default: sequential field-by-field (recommended for quality)
 result = prompter.optimize(examples=examples)
 
-# Legacy: single-pass
-result = prompter.optimize(examples=examples, sequential=False)
+# Fast: single-pass with reduced budgets (faster, lower cost)
+result = prompter.optimize(examples=examples, fast=True)
 ```
 
 ---
