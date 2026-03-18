@@ -83,11 +83,16 @@ examples = [
     # 5-20 examples typically enough
 ]
 
-result = prompter.optimize(examples=examples)
+result = prompter.optimize(examples=examples, verbose=True)
 print(f"Accuracy: {result.baseline_score:.0%} → {result.optimized_score:.0%}")
 ```
 
-By default, optimization uses **default mode** (`fast=False`): each field description is optimized independently (deepest-nested first), then prompts. This reduces the search space and often yields better results. For faster optimization with lower API costs, use `fast=True` for single-pass optimization with reduced demo budgets.
+**Monitor progress in real-time** with `verbose=True` to see:
+- Rich-formatted optimization progress
+- Actual optimized descriptions after each field optimization
+- Final summary with scores, API calls, and token usage
+
+By default, optimization uses **single-pass mode**: one DSPy compile for all fields with reduced demo budgets for maximum speed. For better quality at the cost of more API calls, use `sequential=True` to optimize each field description independently (deepest-nested first), then prompts. With `parallel_fields=True` (default), fields are optimized in parallel for speed.
 
 ### Deploy to Production
 
@@ -140,10 +145,23 @@ result = prompter.optimize(
     exclude_fields=["metadata", "timestamp"],
 )
 
-# Fast mode (single-pass optimization with reduced demo budgets)
+# Sequential mode (field-by-field optimization)
 result = prompter.optimize(
     examples=examples,
-    fast=True,
+    sequential=True,
+)
+
+# Parallel field optimization (sequential mode with parallelization)
+result = prompter.optimize(
+    examples=examples,
+    sequential=True,
+    parallel_fields=True,
+)
+
+# Reduce validation set size for faster optimization
+result = prompter.optimize(
+    examples=examples,
+    max_val_examples=5,
 )
 ```
 
@@ -170,7 +188,7 @@ if result.confidence > 0.9:
 Full documentation at [davidberenstein1957.github.io/dspydantic](https://davidberenstein1957.github.io/dspydantic/)
 
 - [Getting Started](https://davidberenstein1957.github.io/dspydantic/guides/optimization/first-optimization/) - First extraction in 5 minutes
-- [Configure Optimizations](https://davidberenstein1957.github.io/dspydantic/guides/advanced/configure-optimizations/) - Optimizers, fast/default modes, threads
+- [Configure Optimizations](https://davidberenstein1957.github.io/dspydantic/guides/advanced/configure-optimizations/) - Optimizers, single-pass/sequential modes, parallelization
 - [Field Inclusion & Exclusion](https://davidberenstein1957.github.io/dspydantic/guides/advanced/field-exclusion/) - Focus optimization on specific fields
 - [API Reference](https://davidberenstein1957.github.io/dspydantic/reference/api/prompter/) - Full documentation
 

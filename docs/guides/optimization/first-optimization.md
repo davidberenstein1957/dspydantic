@@ -142,10 +142,16 @@ prompter = Prompter(
     model_id="openai/gpt-4o-mini",
 )
 
-result = prompter.optimize(examples=examples)
+result = prompter.optimize(examples=examples, verbose=True)
 ```
 
-Optimization takes 1-5 minutes depending on example count. By default, each field is optimized independently (deepest-nested first), then prompts—this **default mode** (`fast=False`) reduces the search space. See [Configure Optimizations](../advanced/configure-optimizations.md) for `fast`, `include_fields`, `exclude_fields`, and other options.
+Optimization takes 1-5 minutes depending on example count. With `verbose=True`, you'll see real-time progress with:
+- Rich-formatted headers showing your model and optimization mode
+- Field-by-field optimization progress with improved/unchanged indicators
+- The actual optimized descriptions and prompts
+- Final summary table with scores and API costs
+
+See [Configure Optimizations](../advanced/configure-optimizations.md) for options like `sequential`, `max_val_examples`, `include_fields`, `exclude_fields`, and custom progress callbacks.
 
 ---
 

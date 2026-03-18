@@ -11,27 +11,42 @@ This guide covers how to configure optimization parameters, choose the right DSP
 | Examples | - | 10-20 | Quality |
 | Threads | 4 | 4-8 | Speed |
 | Optimizer | Auto | Based on dataset | Quality/Cost |
-| fast | False | False for quality, True for speed | Search space vs cost |
+| sequential | False | False for speed, True for quality | Single-pass vs field-by-field |
+| parallel_fields | True | True for sequential mode | Parallelizes field optimization |
+| max_val_examples | None | 3-5 to reduce API calls | Validation set size |
+| skip_score_threshold | None | 0.95 for high-scoring fields | Skip well-optimized fields |
 | include_fields | None | As needed | Focus optimization |
 | exclude_fields | None | As needed | Skip metadata in scoring |
 
 ---
 
-## Default vs Fast Mode Optimization
+## Single-Pass vs Sequential Mode Optimization
 
-By default, DSPydantic uses **default mode** (`fast=False`):
+By default, DSPydantic uses **single-pass mode** (`sequential=False`):
+
+1. All field descriptions and prompts are optimized together in one DSPy compile
+2. Reduced demo budgets (`max_bootstrapped_demos=1`) for speed
+3. **Fastest approach**: one DSPy compile instead of N+2
+4. Good when speed is prioritized
+
+Use `sequential=True` for field-by-field optimization — slower but better quality:
 
 1. **Phase 1**: Optimize each field description independently, deepest-nested first. Each run has a minimal search space.
 2. **Phase 2**: Optimize system and instruction prompts with field descriptions fixed.
-
-This often yields better results than optimizing everything at once. Use `fast=True` for single-pass optimization with reduced demo budgets — faster but lower quality.
+3. With `parallel_fields=True` (default), all fields optimize simultaneously, giving ~N× speedup
 
 ```python
-# Default: sequential field-by-field (recommended for quality)
+# Single-pass (default): fast, lower API costs
 result = prompter.optimize(examples=examples)
 
-# Fast: single-pass with reduced budgets (faster, lower cost)
-result = prompter.optimize(examples=examples, fast=True)
+# Sequential: field-by-field for better quality
+result = prompter.optimize(examples=examples, sequential=True)
+
+# Sequential + parallel: best of both (field-by-field quality with parallel speedup)
+result = prompter.optimize(examples=examples, sequential=True, parallel_fields=True)
+
+# Reduce API calls by capping validation examples
+result = prompter.optimize(examples=examples, max_val_examples=5)
 ```
 
 ---
@@ -478,6 +493,59 @@ result = prompter.optimize(
     },
 )
 ```
+
+---
+
+## Progress Tracking and Verbose Output
+
+Monitor optimization progress in real-time with rich-formatted output showing optimized values:
+
+### Automatic Verbose Output
+
+Enable verbose mode to see real-time progress with automatically formatted output:
+
+```python
+result = prompter.optimize(
+    examples=examples,
+    verbose=True,  # Enables rich formatted output with optimized values
+)
+```
+
+Output shows:
+- **Header**: Model name, field count, examples, optimization mode
+- **Progress**: Field-by-field scores with improved/unchanged indicators
+- **Optimized Values**: The actual optimized descriptions after each field
+- **Summary Table**: Final scores, improvements, API calls, tokens
+
+### Custom Progress Callbacks
+
+For custom progress handling, use the `on_progress` callback:
+
+```python
+from dspydantic import FieldOptimizationProgress
+
+def my_callback(progress: FieldOptimizationProgress):
+    if progress.phase == "fields":
+        print(f"Field: {progress.field_path}")
+        print(f"  Score: {progress.score_before:.0%} → {progress.score_after:.0%}")
+        if progress.optimized_value:
+            print(f"  Optimized to: {progress.optimized_value!r}")
+    elif progress.phase == "complete":
+        print(f"Optimization finished in {progress.elapsed_seconds:.1f}s")
+
+result = prompter.optimize(
+    examples=examples,
+    on_progress=my_callback,
+)
+```
+
+The `FieldOptimizationProgress` object contains:
+- `phase`: Current phase ("baseline", "fields", "system_prompt", "instruction_prompt", "complete")
+- `score_before` / `score_after`: Scores before and after this step
+- `field_path`: Current field name (for field phases only)
+- `optimized_value`: The actual optimized text that was generated
+- `elapsed_seconds`: Total time elapsed since start
+- `improved`: Whether the score went up
 
 ---
 

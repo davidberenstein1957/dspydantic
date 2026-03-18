@@ -4,31 +4,41 @@ This page explains how DSPydantic optimization works, why it's effective, and th
 
 ## How Optimization Works
 
-DSPydantic uses DSPy's optimization algorithms to automatically improve field descriptions **and prompts**. By default, optimization runs in **default mode** (see below), which reduces the search space and often yields better results.
+DSPydantic uses DSPy's optimization algorithms to automatically improve field descriptions **and prompts**. By default, optimization runs in **single-pass mode** (see below), which is fastest. For better quality, use **sequential mode** to optimize field-by-field.
 
-### Default Mode (`fast=False`)
+### Single-Pass Mode (`sequential=False`, default)
 
-When `fast=False` (default):
+When `sequential=False` (default):
+
+1. All field descriptions and prompts are optimized together in one DSPy run
+2. Reduced demo budgets (`max_bootstrapped_demos=1`) for speed
+3. Fastest approach: one DSPy compile instead of N+2
+4. Good for fast prototyping and when speed is prioritized
+
+### Sequential Mode (`sequential=True`)
+
+When `sequential=True`:
 
 1. **Phase 1 – Fields**: Each field description is optimized independently, ordered by nesting depth (deepest first). All other fields stay fixed. This minimizes the search space per run.
 2. **Phase 2 – Prompts**: With field descriptions fixed, the system prompt and instruction prompt are optimized one at a time.
 3. **Rolling baseline**: Each improvement becomes the baseline for the next step.
-
-### Fast Mode (`fast=True`)
-
-When `fast=True`, all field descriptions and prompts are optimized together in one DSPy run with reduced demo budgets (`max_bootstrapped_demos=1`). Use this for faster optimization with lower API costs, accepting slightly lower quality.
+4. Optionally parallelize fields with `parallel_fields=True` for N× speedup over sequential
+5. Better quality but more API calls than single-pass mode
 
 ## Optimization Flow
 
 ```mermaid
 flowchart TD
     A[User Examples] --> B[Prompter]
-    B --> C{fast?}
-    C -->|false (default)| D[Phase 1: Fields deepest-first]
-    D --> E[Phase 2: Prompts]
-    C -->|true| F[Single-Pass: All at once with fast kwargs]
-    E --> G[Evaluators]
-    F --> G
+    B --> C{sequential?}
+    C -->|false (default)| F[Single-Pass: All at once with fast kwargs]
+    C -->|true| D{parallel_fields?}
+    D -->|true| D2[Phase 1: Fields in parallel]
+    D -->|false| D1[Phase 1: Fields deepest-first]
+    D1 --> E[Phase 2: Prompts]
+    D2 --> E
+    F --> G[Evaluators]
+    E --> G
     G --> H[Score Results]
     H --> I[Select Best]
     I --> J[Optimized Prompter]
@@ -160,9 +170,52 @@ The optimized descriptions and prompts are tailored to your use case. They may:
 - Be longer or shorter depending on what works
 - Work synergistically together
 
+## Tracking Optimization Progress
+
+### Verbose Output
+
+Enable `verbose=True` to see real-time optimization progress with rich-formatted output:
+
+```python
+result = prompter.optimize(examples=examples, verbose=True)
+```
+
+This displays:
+- **Header** showing model, field count, and optimization mode
+- **Real-time progress** for each field and prompt optimization
+- **Optimized values** showing the actual descriptions and prompts that were generated
+- **Summary table** with final scores, improvements, API calls, and tokens used
+
+### Custom Progress Tracking
+
+For programmatic progress tracking, use the `on_progress` callback:
+
+```python
+from dspydantic import FieldOptimizationProgress
+
+def track_progress(progress: FieldOptimizationProgress):
+    if progress.phase == "fields":
+        # Field optimization complete
+        print(f"{progress.field_path}: {progress.score_before:.0%} → {progress.score_after:.0%}")
+        if progress.optimized_value:
+            print(f"  → {progress.optimized_value!r}")
+    elif progress.phase == "complete":
+        # Optimization finished
+        print(f"Done in {progress.elapsed_seconds:.1f}s")
+
+result = prompter.optimize(examples=examples, on_progress=track_progress)
+```
+
+The `FieldOptimizationProgress` object provides:
+- `phase`: Current optimization phase
+- `score_before` / `score_after`: Scores at each step
+- `optimized_value`: The actual optimized text that was generated
+- `elapsed_seconds`: Time elapsed since optimization started
+- `improved`: Whether the score went up
+
 ## Further Reading
 
-- [Configure Optimizations](../guides/advanced/configure-optimizations.md) - Fast/default modes, optimizers, threads
+- [Configure Optimizations](../guides/advanced/configure-optimizations.md) - Single-pass/sequential modes, optimizers, parallelization, threads
 - [Field Inclusion & Exclusion](../guides/advanced/field-exclusion.md) - Focus on specific fields
 - [Architecture](architecture.md) - System design details
 - [Understanding Evaluators](evaluators.md) - How evaluation works
