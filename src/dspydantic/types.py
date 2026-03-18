@@ -57,6 +57,7 @@ class FieldOptimizationProgress:
         field_path: Dot-notation path of the field just optimized (None for non-field phases).
         field_index: 1-based index of the field (None for non-field phases).
         elapsed_seconds: Wall-clock seconds elapsed since optimization started.
+        optimized_value: The optimized description or prompt text (None for non-field/non-prompt phases).
     """
 
     phase: str
@@ -67,6 +68,7 @@ class FieldOptimizationProgress:
     field_path: str | None = None
     field_index: int | None = None
     elapsed_seconds: float = 0.0
+    optimized_value: str | None = None
 
 
 @dataclass
