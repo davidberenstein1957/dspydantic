@@ -1,6 +1,6 @@
 """dspydantic - Optimize Pydantic model field descriptions using DSPy."""
 
-__version__ = "0.1.5"
+__version__ = "0.1.6"
 
 # Import evaluators package to trigger registration - must be done before importing classes
 import dspydantic.evaluators  # noqa: F401

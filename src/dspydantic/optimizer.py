@@ -2,6 +2,7 @@
 
 import inspect
 import time
+import warnings
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
@@ -613,16 +614,24 @@ class PydanticOptimizer:
             return self._default_evaluate_fn(lm, evaluator_config=evaluator_config_to_use)
         raise TypeError(f"Unexpected type for evaluate_fn: {type(raw)}")
 
-    def _create_metric_function(self, lm: dspy.LM) -> Callable[..., float]:
+    def _create_metric_function(
+        self,
+        lm: dspy.LM,
+        field_descriptions_override: dict[str, str] | None = None,
+    ) -> Callable[..., float]:
         """Create a metric function for DSPy optimization.
 
         Args:
             lm: The DSPy language model (needed for default evaluation function).
+            field_descriptions_override: Optional field descriptions to use as fallback
+                instead of self.field_descriptions. Used during prompt optimization
+                (Phase 2) to evaluate with Phase 1's optimized descriptions.
 
         Returns:
             A function that evaluates prompt performance.
         """
         evaluate_fn = self._resolve_evaluate_fn(lm)
+        fallback_descriptions = field_descriptions_override or self.field_descriptions
 
         def metric_function(
             example: dspy.Example, prediction: dspy.Prediction, trace: Any = None
@@ -652,9 +661,9 @@ class PydanticOptimizer:
                     field_path = key.replace("optimized_", "")
                     optimized_field_descriptions[field_path] = value
 
-            # If no optimized values provided (baseline evaluation), use original
+            # If no optimized values provided (baseline evaluation), use fallback
             if not optimized_field_descriptions:
-                optimized_field_descriptions = self.field_descriptions.copy()
+                optimized_field_descriptions = fallback_descriptions.copy()
             if optimized_system_prompt is None:
                 optimized_system_prompt = self.system_prompt
             if optimized_instruction_prompt is None:
@@ -1037,15 +1046,12 @@ class PydanticOptimizer:
             model_name=self.model.__name__,
         )
 
-        train_single = self._prepare_dspy_examples(
-            descriptions_override=single_field_descriptions,
-        )
-        val_single = self._prepare_dspy_examples(
+        all_single = self._prepare_dspy_examples(
             descriptions_override=single_field_descriptions,
         )
         split_idx = len(train_examples)
-        train_single = train_single[:split_idx]
-        val_single = val_single[split_idx:] if split_idx < len(train_single) else train_single
+        train_single = all_single[:split_idx]
+        val_single = all_single[split_idx:] if split_idx < len(all_single) else all_single
 
         metric = self._create_single_field_metric(
             field_path, current_descriptions, evaluate_fn, optimized_demos
@@ -1179,7 +1185,10 @@ class PydanticOptimizer:
             current_prompt = current_instruction_prompt
             attr_name = "optimized_instruction_prompt"
 
-        metric = self._create_metric_function(dspy.settings.lm)
+        metric = self._create_metric_function(
+            dspy.settings.lm,
+            field_descriptions_override=current_descriptions,
+        )
         optimizer = self._create_teleprompter(metric)
 
         optimizers_with_valset = (
@@ -1287,12 +1296,21 @@ class PydanticOptimizer:
         baseline_scores = []
         for val_ex in val_examples:
             example_obj = self._dspy_example_to_example(val_ex)
-            baseline_score = evaluate_fn(
-                example_obj,
-                self.field_descriptions,
-                self.system_prompt,
-                self.instruction_prompt,
-            )
+            if self._evaluate_fn_accepts_optimized_demos(evaluate_fn):
+                baseline_score = evaluate_fn(
+                    example_obj,
+                    self.field_descriptions,
+                    self.system_prompt,
+                    self.instruction_prompt,
+                    optimized_demos=optimized_demos,
+                )
+            else:
+                baseline_score = evaluate_fn(
+                    example_obj,
+                    self.field_descriptions,
+                    self.system_prompt,
+                    self.instruction_prompt,
+                )
             baseline_scores.append(baseline_score)
 
         baseline_avg = sum(baseline_scores) / len(baseline_scores) if baseline_scores else 0.0
@@ -1335,12 +1353,21 @@ class PydanticOptimizer:
             scores = []
             for val_ex in effective_val_examples:
                 example_obj = self._dspy_example_to_example(val_ex)
-                score = evaluate_fn(
-                    example_obj,
-                    current_descriptions,
-                    self.system_prompt,
-                    self.instruction_prompt,
-                )
+                if self._evaluate_fn_accepts_optimized_demos(evaluate_fn):
+                    score = evaluate_fn(
+                        example_obj,
+                        current_descriptions,
+                        self.system_prompt,
+                        self.instruction_prompt,
+                        optimized_demos=optimized_demos,
+                    )
+                else:
+                    score = evaluate_fn(
+                        example_obj,
+                        current_descriptions,
+                        self.system_prompt,
+                        self.instruction_prompt,
+                    )
                 scores.append(score)
             current_score = sum(scores) / len(scores) if scores else baseline_avg
         else:
@@ -1372,12 +1399,21 @@ class PydanticOptimizer:
                     field_baseline_scores = []
                     for val_ex in effective_val_examples:
                         example_obj = self._dspy_example_to_example(val_ex)
-                        score = evaluate_fn(
-                            example_obj,
-                            current_descriptions,
-                            self.system_prompt,
-                            self.instruction_prompt,
-                        )
+                        if self._evaluate_fn_accepts_optimized_demos(evaluate_fn):
+                            score = evaluate_fn(
+                                example_obj,
+                                current_descriptions,
+                                self.system_prompt,
+                                self.instruction_prompt,
+                                optimized_demos=optimized_demos,
+                            )
+                        else:
+                            score = evaluate_fn(
+                                example_obj,
+                                current_descriptions,
+                                self.system_prompt,
+                                self.instruction_prompt,
+                            )
                         field_baseline_scores.append(score)
                     field_baseline = sum(field_baseline_scores) / len(field_baseline_scores) if field_baseline_scores else 0.0
 
@@ -1703,7 +1739,16 @@ class PydanticOptimizer:
         # Ensure at least one example in trainset (needed for optimizers like MIPROv2)
         split_idx = max(1, int(len(trainset) * self.train_split))
         train_examples = trainset[:split_idx]
-        val_examples = trainset[split_idx:] if split_idx < len(trainset) else trainset
+        val_examples = trainset[split_idx:]
+        if not val_examples:
+            warnings.warn(
+                f"Not enough examples to create a separate validation set "
+                f"({len(trainset)} examples with train_split={self.train_split}). "
+                f"Using training set for validation — scores may be inflated.",
+                UserWarning,
+                stacklevel=2,
+            )
+            val_examples = trainset
 
         # Few-shot demos: up to 8 training examples for the extraction prompt
         max_few_shot = min(8, split_idx)
@@ -1746,12 +1791,21 @@ class PydanticOptimizer:
             # Convert DSPy example to our Example object
             example_obj = self._dspy_example_to_example(val_ex)
             # Use original prompts and descriptions (no optimization)
-            baseline_score = evaluate_fn(
-                example_obj,
-                self.field_descriptions,
-                self.system_prompt,
-                self.instruction_prompt,
-            )
+            if self._evaluate_fn_accepts_optimized_demos(evaluate_fn):
+                baseline_score = evaluate_fn(
+                    example_obj,
+                    self.field_descriptions,
+                    self.system_prompt,
+                    self.instruction_prompt,
+                    optimized_demos=optimized_demos,
+                )
+            else:
+                baseline_score = evaluate_fn(
+                    example_obj,
+                    self.field_descriptions,
+                    self.system_prompt,
+                    self.instruction_prompt,
+                )
             baseline_scores.append(baseline_score)
 
         baseline_avg = (
