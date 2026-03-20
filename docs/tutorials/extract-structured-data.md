@@ -156,11 +156,9 @@ result = prompter.optimize(examples=examples)
 
 **How the default mode works:**
 
-By default (`fast=False`), optimization:
-1. Optimizes each field independently (starting with deepest-nested fields)
-2. Then optimizes the system and instruction prompts
+By default (`sequential=False`), all fields and prompts are optimized together in a single pass for speed. For higher quality, use `sequential=True` to optimize each field independently (starting with deepest-nested fields), then optimize system and instruction prompts.
 
-This reduces the search space and often gives better results. For a faster alternative, use `fast=True`. See [Configure Optimization Parameters](../how-to/configure-optimizations.md) for more options.
+See [Configure Optimization Parameters](../how-to/configure-optimizations.md) for more options like `early_stopping_patience`, `auto_generate_prompts`, and `compile_kwargs`.
 
 Optimization takes 1-5 minutes depending on example count and model.
 
@@ -332,7 +330,7 @@ Full input format details are in [Use Images and PDFs](../how-to/use-multimodal-
 
 - Reduce example count for initial testing
 - Use `gpt-4o-mini` for faster iterations
-- Use `fast=True` for single-pass optimization
+- Use single-pass mode (default) or limit trials with `compile_kwargs={"num_trials": 5}`
 
 **API key issues?**
 

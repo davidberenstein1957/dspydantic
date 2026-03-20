@@ -6,6 +6,154 @@ from typing import Any
 import dspy
 
 
+class OptimizeFieldDescription(dspy.Signature):
+    """Rewrite the given field description to be clearer, more specific, \
+and more effective for guiding structured data extraction. \
+Output ONLY the improved description text."""
+
+    field_description: str = dspy.InputField(
+        desc="The current field description to improve"
+    )
+    field_type: str = dspy.InputField(desc="The data type of the field")
+    optimized_field_description: str = dspy.OutputField(
+        desc="The improved field description"
+    )
+
+
+class OptimizeSystemPrompt(dspy.Signature):
+    """Rewrite the given system prompt to be clearer and more effective \
+for guiding structured data extraction. \
+Output ONLY the improved system prompt text."""
+
+    system_prompt: str = dspy.InputField(
+        desc="The current system prompt to improve"
+    )
+    optimized_system_prompt: str = dspy.OutputField(
+        desc="The improved system prompt"
+    )
+
+
+class OptimizeInstructionPrompt(dspy.Signature):
+    """Rewrite the given instruction prompt to be clearer and more \
+effective for guiding structured data extraction. \
+Preserve any template placeholders exactly as they appear. \
+Output ONLY the improved instruction prompt text."""
+
+    instruction_prompt: str = dspy.InputField(
+        desc="The current instruction prompt to improve"
+    )
+    optimized_instruction_prompt: str = dspy.OutputField(
+        desc="The improved instruction prompt"
+    )
+
+
+def _make_contextual_field_signature(
+    model_name: str,
+) -> type[dspy.Signature]:
+    """Create a context-aware signature for field description optimization.
+
+    Uses three lightweight techniques to give MiPROV2's proposer domain context
+    without bloating token usage:
+    1. Dynamic class name (0 extra tokens — replaces generic name)
+    2. Concise docstring with model name (~25 tokens)
+    3. field_name input field (~2-5 tokens per call)
+
+    Args:
+        model_name: Name of the Pydantic model being optimized.
+
+    Returns:
+        A Signature class with contextual class name, docstring, and fields.
+    """
+    docstring = (
+        f"Improve a field description for {model_name} structured data extraction. "
+        f"Output ONLY the improved description — a short descriptive phrase, "
+        f"not instructions."
+    )
+
+    # Dynamic class name gives the proposer domain signal for free
+    cls = type(
+        f"Optimize{model_name}FieldDescription",
+        (dspy.Signature,),
+        {
+            "__doc__": docstring,
+            "__annotations__": {
+                "field_name": str,
+                "field_description": str,
+                "field_type": str,
+                "optimized_field_description": str,
+            },
+            "field_name": dspy.InputField(desc="Name of the field being optimized"),
+            "field_description": dspy.InputField(
+                desc="The current field description to improve"
+            ),
+            "field_type": dspy.InputField(desc="The data type of the field"),
+            "optimized_field_description": dspy.OutputField(
+                desc="The improved field description — a short descriptive phrase"
+            ),
+        },
+    )
+    return cls
+
+
+def _make_contextual_system_prompt_signature(
+    model_name: str,
+) -> type[dspy.Signature]:
+    """Create a context-aware signature for system prompt optimization."""
+    docstring = (
+        f"Improve the system prompt for {model_name} structured data extraction. "
+        f"Output ONLY the improved system prompt text."
+    )
+
+    cls = type(
+        f"Optimize{model_name}SystemPrompt",
+        (dspy.Signature,),
+        {
+            "__doc__": docstring,
+            "__annotations__": {
+                "system_prompt": str,
+                "optimized_system_prompt": str,
+            },
+            "system_prompt": dspy.InputField(
+                desc="The current system prompt to improve"
+            ),
+            "optimized_system_prompt": dspy.OutputField(
+                desc="The improved system prompt"
+            ),
+        },
+    )
+    return cls
+
+
+def _make_contextual_instruction_prompt_signature(
+    model_name: str,
+) -> type[dspy.Signature]:
+    """Create a context-aware signature for instruction prompt optimization."""
+    docstring = (
+        f"Improve the instruction prompt for {model_name} structured data extraction. "
+        f"Preserve any template placeholders exactly as they appear. "
+        f"Output ONLY the improved instruction prompt text."
+    )
+
+    cls = type(
+        f"Optimize{model_name}InstructionPrompt",
+        (dspy.Signature,),
+        {
+            "__doc__": docstring,
+            "__annotations__": {
+                "instruction_prompt": str,
+                "optimized_instruction_prompt": str,
+            },
+            "instruction_prompt": dspy.InputField(
+                desc="The current instruction prompt to improve"
+            ),
+            "optimized_instruction_prompt": dspy.OutputField(
+                desc="The improved instruction prompt"
+            ),
+        },
+    )
+    return cls
+
+
 class PydanticOptimizerModule(dspy.Module):
     """DSPy module for optimizing field descriptions, system prompts, and instruction prompts."""
 
@@ -15,6 +163,7 @@ class PydanticOptimizerModule(dspy.Module):
         field_types: dict[str, str] | None = None,
         has_system_prompt: bool = False,
         has_instruction_prompt: bool = False,
+        model_name: str | None = None,
     ):
         """Initialize the optimizer module.
 
@@ -23,6 +172,7 @@ class PydanticOptimizerModule(dspy.Module):
             field_types: Dictionary mapping field paths to their type names as strings.
             has_system_prompt: Whether to optimize a system prompt.
             has_instruction_prompt: Whether to optimize an instruction prompt.
+            model_name: Name of the Pydantic model (for contextual signatures).
         """
         super().__init__()
 
@@ -30,25 +180,36 @@ class PydanticOptimizerModule(dspy.Module):
         self.field_descriptions = field_descriptions or {}
         self.field_types = field_types or {}
 
+        # Choose signature: contextual (with model name) or generic
+        if model_name:
+            field_sig = _make_contextual_field_signature(model_name)
+            self._has_field_name_input = True
+        else:
+            field_sig = OptimizeFieldDescription
+            self._has_field_name_input = False
+
         # Create optimizers for each field description
         self.field_optimizers: dict[str, dspy.ChainOfThought] = {}
         for field_path, description in self.field_descriptions.items():
-            # Create a signature for optimizing this field's description
-            # Include field_type in the signature if available
-            signature = "field_description, field_type -> optimized_field_description"
-            self.field_optimizers[field_path] = dspy.ChainOfThought(signature)
+            self.field_optimizers[field_path] = dspy.ChainOfThought(field_sig)
 
         # Create optimizers for prompts if needed
         self.has_system_prompt = has_system_prompt
         self.has_instruction_prompt = has_instruction_prompt
 
         if has_system_prompt:
-            signature = "system_prompt -> optimized_system_prompt"
-            self.system_prompt_optimizer = dspy.ChainOfThought(signature)
+            if model_name:
+                sys_sig = _make_contextual_system_prompt_signature(model_name)
+            else:
+                sys_sig = OptimizeSystemPrompt
+            self.system_prompt_optimizer = dspy.ChainOfThought(sys_sig)
 
         if has_instruction_prompt:
-            signature = "instruction_prompt -> optimized_instruction_prompt"
-            self.instruction_prompt_optimizer = dspy.ChainOfThought(signature)
+            if model_name:
+                instr_sig = _make_contextual_instruction_prompt_signature(model_name)
+            else:
+                instr_sig = OptimizeInstructionPrompt
+            self.instruction_prompt_optimizer = dspy.ChainOfThought(instr_sig)
 
     def _remove_optimization_markers(self, text: str) -> str:
         """Remove optimization instruction markers from optimized prompt text."""
@@ -104,7 +265,14 @@ class PydanticOptimizerModule(dspy.Module):
                 field_type = field_descriptions.get(field_type_key, "")
                 if not field_type:
                     field_type = self.field_types.get(field_path, "")
-                result = optimizer(field_description=description, field_type=field_type)
+                # Pass field_name if the signature accepts it (contextual signatures do)
+                kwargs: dict[str, str] = {
+                    "field_description": description,
+                    "field_type": field_type,
+                }
+                if self._has_field_name_input:
+                    kwargs["field_name"] = field_path
+                result = optimizer(**kwargs)
                 optimized[f"optimized_{field_path}"] = (
                     result.optimized_field_description
                 )
@@ -200,4 +368,3 @@ class PydanticOptimizerModule(dspy.Module):
                 optimized["optimized_instruction_prompt"] = result.optimized_instruction_prompt
 
         return dspy.Prediction(**optimized)
-

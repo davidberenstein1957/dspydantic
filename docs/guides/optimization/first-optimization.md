@@ -151,7 +151,7 @@ Optimization takes 1-5 minutes depending on example count. With `verbose=True`, 
 - The actual optimized descriptions and prompts
 - Final summary table with scores and API costs
 
-See [Configure Optimizations](../advanced/configure-optimizations.md) for options like `sequential`, `max_val_examples`, `include_fields`, `exclude_fields`, and custom progress callbacks.
+See [Configure Optimizations](../advanced/configure-optimizations.md) for options like `sequential`, `early_stopping_patience`, `auto_generate_prompts`, `compile_kwargs`, `max_val_examples`, `include_fields`, `exclude_fields`, and custom progress callbacks.
 
 ---
 
@@ -269,6 +269,8 @@ job = prompter.run(new_posting_text)
 
 - Reduce example count for initial testing
 - Use `gpt-4o-mini` for faster iterations
+- Use `compile_kwargs={"num_trials": 5}` to limit MiPROv2 trials
+- Use `early_stopping_patience=2` in sequential mode
 
 **API key issues?**
 

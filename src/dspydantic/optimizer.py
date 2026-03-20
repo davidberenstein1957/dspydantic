@@ -203,6 +203,7 @@ class PydanticOptimizer:
         optimizer: str | Teleprompter | None = None,
         train_split: float = 0.8,
         optimizer_kwargs: dict[str, Any] | None = None,
+        compile_kwargs: dict[str, Any] | None = None,
         exclude_fields: list[str] | None = None,
         include_fields: list[str] | None = None,
         evaluator_config: dict[str, Any] | None = None,
@@ -210,6 +211,11 @@ class PydanticOptimizer:
         parallel_fields: bool = True,
         max_val_examples: int | None = None,
         skip_score_threshold: float | None = None,
+        skip_field_description_optimization: bool = False,
+        skip_system_prompt_optimization: bool = False,
+        skip_instruction_prompt_optimization: bool = False,
+        early_stopping_patience: int | None = None,
+        auto_generate_prompts: bool = False,
         on_progress: Callable[[FieldOptimizationProgress], None] | None = None,
     ) -> None:
         """Initialize the Pydantic optimizer.
@@ -276,6 +282,19 @@ class PydanticOptimizer:
                 first N validation examples per field optimization, reducing scoring LLM calls.
             skip_score_threshold: Optional threshold (0.0-1.0). When set in sequential mode,
                 skips optimizing fields that already score above this baseline threshold.
+            skip_field_description_optimization: If True, skip field description optimization
+                entirely. Useful for multi-pass workflows where you want to optimize only
+                prompts, or when field descriptions are already satisfactory.
+            skip_system_prompt_optimization: If True, skip system prompt optimization.
+                The original system_prompt will be preserved as-is.
+            skip_instruction_prompt_optimization: If True, skip instruction prompt optimization.
+                The original instruction_prompt will be preserved as-is.
+            early_stopping_patience: Stop field optimization after N consecutive fields
+                without improvement. Only applies to sequential mode. None disables early
+                stopping (default).
+            auto_generate_prompts: If True, auto-generate a system prompt and instruction
+                prompt when not provided. This gives MiPROV2 and other instruction-optimizing
+                optimizers additional targets to optimize beyond field descriptions.
             on_progress: Optional callback invoked after each field/phase optimization.
                 Receives a FieldOptimizationProgress object with field_path, score updates, etc.
 
@@ -318,10 +337,16 @@ class PydanticOptimizer:
         self.verbose = verbose
         self.train_split = train_split
         self.optimizer_kwargs = optimizer_kwargs or {}
+        self.compile_kwargs = compile_kwargs or {}
         self.sequential = sequential
         self.parallel_fields = parallel_fields
         self.max_val_examples = max_val_examples
         self.skip_score_threshold = skip_score_threshold
+        self.skip_field_description_optimization = skip_field_description_optimization
+        self.skip_system_prompt_optimization = skip_system_prompt_optimization
+        self.skip_instruction_prompt_optimization = skip_instruction_prompt_optimization
+        self.early_stopping_patience = early_stopping_patience
+        self.auto_generate_prompts = auto_generate_prompts
         self.on_progress = on_progress
 
         # Add default progress callback if verbose and no callback provided
@@ -382,6 +407,20 @@ class PydanticOptimizer:
 
         # Extract field types from Pydantic model
         self.field_types = extract_field_types(self.model)
+
+        # Auto-generate system and instruction prompts if requested
+        if self.auto_generate_prompts:
+            if self.system_prompt is None:
+                self.system_prompt = (
+                    f"You are an expert at extracting structured {model.__name__} "
+                    f"data from text. Be precise and faithful to the source text."
+                )
+            if self.instruction_prompt is None:
+                field_names = ", ".join(self.field_descriptions.keys())
+                self.instruction_prompt = (
+                    f"Extract the following fields from the given text: {field_names}. "
+                    f"Return only values that are explicitly stated or clearly implied."
+                )
 
         # Check that we have something to optimize
         has_field_descriptions = bool(self.field_descriptions)
@@ -926,16 +965,12 @@ class PydanticOptimizer:
         """
         total_fields = len(sorted_fields)
 
+        _par_console = Console() if self.verbose else None
+
         def optimize_field_task(idx_and_path: tuple[int, str]) -> tuple[str, str, float]:
             """Optimize a single field and return (field_path, optimized_desc, score)."""
             idx, field_path = idx_and_path
             depth = field_path.count(".")
-            if self.verbose:
-                print(
-                    f"  Field {idx}/{total_fields}: {field_path} (depth {depth}) ... ",
-                    end="",
-                    flush=True,
-                )
 
             score_before = baseline_avg  # Each field optimizes from baseline independently
             new_desc, new_score = self._optimize_single_field(
@@ -948,11 +983,11 @@ class PydanticOptimizer:
                 optimized_demos=optimized_demos,
             )
             improved = new_score > baseline_avg
-            if self.verbose:
+            if _par_console:
                 if improved:
-                    print(f"{baseline_avg:.2%} → {new_score:.2%} ✓")
+                    _par_console.print(f"  [{idx}/{total_fields}] [bold cyan]{field_path}[/] [green]{baseline_avg:.2%} -> {new_score:.2%}[/]")
                 else:
-                    print(f"{baseline_avg:.2%} (no improvement)")
+                    _par_console.print(f"  [{idx}/{total_fields}] [bold cyan]{field_path}[/] [dim]{baseline_avg:.2%} (no improvement)[/]")
 
             _emit("fields", score_before, new_score, field_path=field_path, field_index=idx,
                   optimized_value=new_desc)
@@ -999,6 +1034,7 @@ class PydanticOptimizer:
             field_types={field_path: self.field_types.get(field_path, "")},
             has_system_prompt=False,
             has_instruction_prompt=False,
+            model_name=self.model.__name__,
         )
 
         train_single = self._prepare_dspy_examples(
@@ -1031,6 +1067,7 @@ class PydanticOptimizer:
                     program,
                     trainset=train_single,
                     valset=val_single,
+                    **self.compile_kwargs,
                 )
             except TypeError:
                 optimized_program = optimizer.compile(
@@ -1041,6 +1078,7 @@ class PydanticOptimizer:
             optimized_program = optimizer.compile(
                 program,
                 trainset=train_single,
+                **self.compile_kwargs,
             )
 
         program_args: dict[str, Any] = {
@@ -1079,8 +1117,13 @@ class PydanticOptimizer:
 
         new_score = sum(scores) / len(scores) if scores else 0.0
 
-        if new_score >= baseline_score:
+        if new_score > baseline_score:
             return (new_description, new_score)
+        if new_score == baseline_score:
+            # Prefer the shorter (simpler) description on ties
+            original = current_descriptions[field_path]
+            if len(new_description) <= len(original):
+                return (new_description, new_score)
         return (current_descriptions[field_path], baseline_score)
 
     def _optimize_prompt(
@@ -1119,6 +1162,7 @@ class PydanticOptimizer:
                 field_types={},
                 has_system_prompt=True,
                 has_instruction_prompt=False,
+                model_name=self.model.__name__,
             )
             current_prompt = current_system_prompt
             attr_name = "optimized_system_prompt"
@@ -1130,6 +1174,7 @@ class PydanticOptimizer:
                 field_types={},
                 has_system_prompt=False,
                 has_instruction_prompt=True,
+                model_name=self.model.__name__,
             )
             current_prompt = current_instruction_prompt
             attr_name = "optimized_instruction_prompt"
@@ -1152,6 +1197,7 @@ class PydanticOptimizer:
                     program,
                     trainset=train_examples,
                     valset=val_examples,
+                    **self.compile_kwargs,
                 )
             except TypeError:
                 optimized_program = optimizer.compile(
@@ -1162,6 +1208,7 @@ class PydanticOptimizer:
             optimized_program = optimizer.compile(
                 program,
                 trainset=train_examples,
+                **self.compile_kwargs,
             )
 
         program_args: dict[str, Any] = {}
@@ -1202,8 +1249,12 @@ class PydanticOptimizer:
 
         new_score = sum(scores) / len(scores) if scores else 0.0
 
-        if new_score >= baseline_score:
+        if new_score > baseline_score:
             return (new_prompt, new_score)
+        if new_score == baseline_score:
+            # Prefer the shorter (simpler) prompt on ties
+            if len(new_prompt) <= len(current_prompt):
+                return (new_prompt, new_score)
         if prompt_type == "system":
             return (current_system_prompt, baseline_score)
         return (current_instruction_prompt, baseline_score)
@@ -1246,8 +1297,9 @@ class PydanticOptimizer:
 
         baseline_avg = sum(baseline_scores) / len(baseline_scores) if baseline_scores else 0.0
         if self.verbose:
-            print(f"Baseline average score: {baseline_avg:.2%}")
-            print("\nPhase 1: Optimizing field descriptions (deepest-first)...")
+            _console = Console()
+            _console.print(f"  Baseline score: [bold]{baseline_avg:.2%}[/]")
+            _console.print("\n[bold]Phase 1:[/] Optimizing field descriptions (deepest-first)...")
 
         current_descriptions = dict(self.field_descriptions)
         current_score = baseline_avg
@@ -1261,9 +1313,13 @@ class PydanticOptimizer:
         if self.max_val_examples is not None:
             effective_val_examples = val_examples[:self.max_val_examples]
             if self.verbose and len(effective_val_examples) < len(val_examples):
-                print(f"(Using {len(effective_val_examples)}/{len(val_examples)} validation examples)")
+                _console.print(f"  [dim](Using {len(effective_val_examples)}/{len(val_examples)} validation examples)[/]")
 
-        if self.parallel_fields:
+        if self.skip_field_description_optimization:
+            if self.verbose:
+                _console.print("  [dim]Skipping field description optimization"
+                               " (skip_field_description_optimization=True)[/]")
+        elif self.parallel_fields:
             # Parallel field optimization
             self._optimize_fields_parallel(
                 sorted_fields=sorted_fields,
@@ -1289,13 +1345,26 @@ class PydanticOptimizer:
             current_score = sum(scores) / len(scores) if scores else baseline_avg
         else:
             # Sequential field optimization (original behavior)
+            no_improvement_count = 0
             for idx, field_path in enumerate(sorted_fields, 1):
+                # Early stopping: skip remaining fields after N consecutive non-improvements
+                if (
+                    self.early_stopping_patience is not None
+                    and no_improvement_count >= self.early_stopping_patience
+                ):
+                    remaining = total_fields - idx + 1
+                    if self.verbose:
+                        _console.print(
+                            f"  [yellow]Early stopping:[/] {no_improvement_count} consecutive "
+                            f"fields without improvement. Skipping {remaining} remaining fields."
+                        )
+                    break
+
                 depth = field_path.count(".")
                 if self.verbose:
-                    print(
-                        f"  Field {idx}/{total_fields}: {field_path} (depth {depth}) ... ",
-                        end="",
-                        flush=True,
+                    _console.print(
+                        f"  [{idx}/{total_fields}] [bold cyan]{field_path}[/] (depth {depth}) ...",
+                        end=" ",
                     )
 
                 # Check skip threshold
@@ -1314,7 +1383,7 @@ class PydanticOptimizer:
 
                     if field_baseline >= self.skip_score_threshold:
                         if self.verbose:
-                            print(f"{field_baseline:.2%} (skipped, already above {self.skip_score_threshold:.0%})")
+                            _console.print(f"[dim]{field_baseline:.2%} (skipped, above {self.skip_score_threshold:.0%})[/]")
                         _emit("skipped", field_baseline, field_baseline, field_path=field_path, field_index=idx)
                         continue
 
@@ -1330,11 +1399,15 @@ class PydanticOptimizer:
                 )
                 improved = new_score > current_score
                 current_descriptions[field_path] = new_desc
+                if improved:
+                    no_improvement_count = 0
+                else:
+                    no_improvement_count += 1
                 if self.verbose:
                     if improved:
-                        print(f"{current_score:.2%} → {new_score:.2%} ✓")
+                        _console.print(f"[green]{current_score:.2%} -> {new_score:.2%}[/]")
                     else:
-                        print(f"{current_score:.2%} (no improvement)")
+                        _console.print(f"[dim]{current_score:.2%} (no improvement)[/]")
                 current_score = new_score
                 _emit("fields", score_before, new_score, field_path=field_path, field_index=idx,
                       optimized_value=new_desc)
@@ -1342,9 +1415,9 @@ class PydanticOptimizer:
         optimized_system_prompt = self.system_prompt
         optimized_instruction_prompt = self.instruction_prompt
 
-        if self.system_prompt is not None:
+        if self.system_prompt is not None and not self.skip_system_prompt_optimization:
             if self.verbose:
-                print("\nPhase 2a: Optimizing system_prompt ... ", end="", flush=True)
+                _console.print("\n[bold]Phase 2a:[/] Optimizing system prompt ...", end=" ")
             score_before_sys = current_score
             optimized_system_prompt, current_score = self._optimize_prompt(
                 "system",
@@ -1358,13 +1431,18 @@ class PydanticOptimizer:
                 optimized_demos,
             )
             if self.verbose:
-                print(f"{current_score:.2%}")
+                if current_score > score_before_sys:
+                    _console.print(f"[green]{score_before_sys:.2%} -> {current_score:.2%}[/]")
+                else:
+                    _console.print(f"[dim]{current_score:.2%} (no improvement)[/]")
             _emit("system_prompt", score_before_sys, current_score,
                   optimized_value=optimized_system_prompt)
+        elif self.system_prompt is not None and self.verbose:
+            _console.print("\n[dim]Skipping system prompt optimization (skip_system_prompt_optimization=True)[/]")
 
-        if self.instruction_prompt is not None:
+        if self.instruction_prompt is not None and not self.skip_instruction_prompt_optimization:
             if self.verbose:
-                print("Phase 2b: Optimizing instruction_prompt ... ", end="", flush=True)
+                _console.print("[bold]Phase 2b:[/] Optimizing instruction prompt ...", end=" ")
             score_before_instr = current_score
             optimized_instruction_prompt, current_score = self._optimize_prompt(
                 "instruction",
@@ -1378,17 +1456,25 @@ class PydanticOptimizer:
                 optimized_demos,
             )
             if self.verbose:
-                print(f"{current_score:.2%}")
+                if current_score > score_before_instr:
+                    _console.print(f"[green]{score_before_instr:.2%} -> {current_score:.2%}[/]")
+                else:
+                    _console.print(f"[dim]{current_score:.2%} (no improvement)[/]")
             _emit("instruction_prompt", score_before_instr, current_score,
                   optimized_value=optimized_instruction_prompt)
+        elif self.instruction_prompt is not None and self.verbose:
+            _console.print("[dim]Skipping instruction prompt optimization"
+                           " (skip_instruction_prompt_optimization=True)[/]")
 
         improvement = current_score - baseline_avg
         improvement_pct = (improvement / baseline_avg * 100) if baseline_avg > 0 else 0.0
 
         if improvement < 0:
             if self.verbose:
-                print(f"\n⚠️  WARNING: Optimization decreased performance by {abs(improvement):.2%}")
-                print("Keeping original prompts and descriptions.")
+                _console.print(
+                    f"\n[yellow]Warning:[/] Optimization decreased performance by "
+                    f"{abs(improvement):.2%}. Keeping original descriptions."
+                )
             current_descriptions = self.field_descriptions.copy()
             optimized_system_prompt = self.system_prompt
             optimized_instruction_prompt = self.instruction_prompt
@@ -1406,28 +1492,9 @@ class PydanticOptimizer:
                     if isinstance(usage, dict):
                         total_tokens += usage.get("total_tokens", 0)
 
-        if self.verbose:
-            _console = Console()
-            table = Table(title="Optimization Complete", box=box.ROUNDED)
-            table.add_column("Metric", style="bold")
-            table.add_column("Value")
-            table.add_row("Baseline score", f"{baseline_avg:.2%}")
-            table.add_row("Final score", f"{current_score:.2%}")
-            if improvement > 0:
-                table.add_row("Improvement", f"{improvement:+.2%}")
-            elif improvement < 0:
-                table.add_row("Improvement", f"{improvement:+.2%} [red](decreased)[/]")
-            else:
-                table.add_row("Improvement", "No change")
-            if api_calls > 0:
-                table.add_row("API calls", str(api_calls))
-            if total_tokens > 0:
-                table.add_row("Total tokens", f"{total_tokens:,}")
-            _console.print(table)
-
         _emit("complete", baseline_avg, current_score)
 
-        return OptimizationResult(
+        result = OptimizationResult(
             optimized_descriptions=current_descriptions,
             optimized_system_prompt=optimized_system_prompt,
             optimized_instruction_prompt=optimized_instruction_prompt,
@@ -1447,6 +1514,88 @@ class PydanticOptimizer:
             estimated_cost_usd=None,
         )
 
+        if self.verbose:
+            _console = Console()
+            self._print_optimization_summary(
+                _console, result, self.field_descriptions, api_calls, total_tokens
+            )
+
+        return result
+
+    def _print_optimization_summary(
+        self,
+        console: Console,
+        result: OptimizationResult,
+        original_descriptions: dict[str, str],
+        api_calls: int,
+        total_tokens: int,
+    ) -> None:
+        """Print a rich summary of optimization results with before/after comparison."""
+        # Score summary table
+        score_table = Table(title="Optimization Results", box=box.ROUNDED)
+        score_table.add_column("Metric", style="bold")
+        score_table.add_column("Value")
+        score_table.add_row("Baseline score", f"{result.baseline_score:.2%}")
+        score_table.add_row("Optimized score", f"{result.optimized_score:.2%}")
+        improvement = result.optimized_score - result.baseline_score
+        if improvement > 0:
+            score_table.add_row("Improvement", f"[green]{improvement:+.2%}[/]")
+        elif improvement < 0:
+            score_table.add_row("Improvement", f"[red]{improvement:+.2%}[/]")
+        else:
+            score_table.add_row("Improvement", "[dim]No change[/]")
+        if api_calls > 0:
+            score_table.add_row("API calls", str(api_calls))
+        if total_tokens > 0:
+            score_table.add_row("Total tokens", f"{total_tokens:,}")
+        console.print(score_table)
+
+        # Before/after description comparison
+        changed_fields = {
+            k: v for k, v in result.optimized_descriptions.items()
+            if v != original_descriptions.get(k)
+        }
+        if changed_fields:
+            desc_table = Table(
+                title="Optimized Field Descriptions",
+                box=box.SIMPLE,
+                show_header=True,
+            )
+            desc_table.add_column("Field", style="bold cyan")
+            desc_table.add_column("Before", style="dim")
+            desc_table.add_column("After", style="green")
+            for field_path, new_desc in result.optimized_descriptions.items():
+                old_desc = original_descriptions.get(field_path, "")
+                if new_desc != old_desc:
+                    desc_table.add_row(field_path, old_desc, new_desc)
+                else:
+                    desc_table.add_row(field_path, old_desc, "[dim](unchanged)[/]")
+            console.print(desc_table)
+
+        # Show optimized prompts if they changed
+        if (
+            result.optimized_system_prompt is not None
+            and result.optimized_system_prompt != self.system_prompt
+        ):
+            console.print(
+                Panel(
+                    result.optimized_system_prompt,
+                    title="Optimized System Prompt",
+                    border_style="green",
+                )
+            )
+        if (
+            result.optimized_instruction_prompt is not None
+            and result.optimized_instruction_prompt != self.instruction_prompt
+        ):
+            console.print(
+                Panel(
+                    result.optimized_instruction_prompt,
+                    title="Optimized Instruction Prompt",
+                    border_style="green",
+                )
+            )
+
     def optimize(self) -> OptimizationResult:
         """Optimize the Pydantic model field descriptions using DSPy.
 
@@ -1454,27 +1603,65 @@ class PydanticOptimizer:
             OptimizationResult containing optimized descriptions and metrics.
         """
         if self.verbose:
-            print(f"\n{'='*60}")
-            print("Starting DSPy Pydantic optimization")
-            print(f"{'='*60}")
-            print(f"Model: {self.model.__name__}")
-            print(f"Optimizer: {self.optimizer_type.upper()}")
-            print(f"Examples: {len(self.examples)}")
+            _console = Console()
             effective_count = len(self._get_effective_fields())
-            print(
-                f"Fields to optimize: {effective_count}"
+
+            # Header panel
+            config_lines = [
+                f"[bold]Model:[/] {self.model.__name__}",
+                f"[bold]Optimizer:[/] {self.optimizer_type.upper()}",
+                f"[bold]Mode:[/] {'sequential (field-by-field)' if self.sequential else 'single-pass (all fields together)'}",
+                f"[bold]Examples:[/] {len(self.examples)}",
+                f"[bold]Fields:[/] {effective_count}"
                 + (
                     f" (of {len(self.field_descriptions)} total)"
                     if effective_count != len(self.field_descriptions)
                     else ""
-                )
-            )
+                ),
+                f"[bold]Threads:[/] {self.num_threads}",
+            ]
+            # Show what will be optimized
+            optimize_targets = []
+            if self.field_descriptions and not self.skip_field_description_optimization:
+                optimize_targets.append(f"{effective_count} field descriptions")
+            if self.system_prompt is not None and not self.skip_system_prompt_optimization:
+                optimize_targets.append("system prompt")
+            if self.instruction_prompt is not None and not self.skip_instruction_prompt_optimization:
+                optimize_targets.append("instruction prompt")
+            if optimize_targets:
+                config_lines.append(f"[bold]Optimizing:[/] {', '.join(optimize_targets)}")
+            if self.early_stopping_patience is not None:
+                config_lines.append(f"[bold]Early stopping:[/] after {self.early_stopping_patience} fields without improvement")
+
+            _console.print(Panel(
+                "\n".join(config_lines),
+                title="DSPydantic Optimization",
+                border_style="blue",
+            ))
+
+            # Show initial field descriptions in a table
             if self.field_descriptions:
-                print("\nInitial field descriptions (set during initialization):")
+                desc_table = Table(
+                    title="Initial Field Descriptions",
+                    box=box.SIMPLE,
+                    show_header=True,
+                )
+                desc_table.add_column("Field", style="bold cyan")
+                desc_table.add_column("Type", style="dim")
+                desc_table.add_column("Description")
                 for field_path, description in self.field_descriptions.items():
-                    print(f"  {field_path}: {description}")
-            print(f"Optimization threads: {self.num_threads}")
-            print(f"{'='*60}\n")
+                    field_type = self.field_types.get(field_path, "")
+                    desc_table.add_row(field_path, field_type, description)
+                _console.print(desc_table)
+
+            # Show initial prompts
+            if self.system_prompt is not None:
+                auto_tag = " [dim](auto-generated)[/]" if self.auto_generate_prompts else ""
+                _console.print(f"\n  [bold]System prompt{auto_tag}:[/] {self.system_prompt}")
+            if self.instruction_prompt is not None:
+                auto_tag = " [dim](auto-generated)[/]" if self.auto_generate_prompts else ""
+                _console.print(f"  [bold]Instruction prompt{auto_tag}:[/] {self.instruction_prompt}")
+            _console.print()
 
         # Use configured DSPy LM (should be set via dspy.configure())
         if dspy.settings.lm is None:
@@ -1489,11 +1676,24 @@ class PydanticOptimizer:
         effective_descriptions = {
             k: v for k, v in self.field_descriptions.items() if k in effective
         }
+        # Apply skip flags: exclude components from optimization module
+        module_field_descriptions = (
+            {} if self.skip_field_description_optimization
+            else (effective_descriptions or self.field_descriptions)
+        )
+        module_has_system_prompt = (
+            self.system_prompt is not None and not self.skip_system_prompt_optimization
+        )
+        module_has_instruction_prompt = (
+            self.instruction_prompt is not None
+            and not self.skip_instruction_prompt_optimization
+        )
         program = PydanticOptimizerModule(
-            field_descriptions=effective_descriptions or self.field_descriptions,
+            field_descriptions=module_field_descriptions,
             field_types=self.field_types,
-            has_system_prompt=self.system_prompt is not None,
-            has_instruction_prompt=self.instruction_prompt is not None,
+            has_system_prompt=module_has_system_prompt,
+            has_instruction_prompt=module_has_instruction_prompt,
+            model_name=self.model.__name__,
         )
 
         # Prepare examples for DSPy
@@ -1518,8 +1718,8 @@ class PydanticOptimizer:
             optimized_demos.append({"input_data": inp, "expected_output": out})
 
         if self.verbose:
-            print(f"Training examples: {len(train_examples)}")
-            print(f"Validation examples: {len(val_examples)}")
+            _console = Console()
+            _console.print(f"  [dim]Train: {len(train_examples)} examples | Val: {len(val_examples)} examples[/]")
 
         if self.sequential:
             return self._optimize_sequential(
@@ -1535,11 +1735,11 @@ class PydanticOptimizer:
         optimizer = self._create_teleprompter(metric)
 
         if self.verbose and self.custom_optimizer is not None:
-            print(f"Using custom optimizer: {type(optimizer).__name__}")
+            _console.print(f"  [dim]Using custom optimizer: {type(optimizer).__name__}[/]")
 
         # Evaluate baseline (original prompts and descriptions) on validation set
         if self.verbose:
-            print("\nEvaluating baseline configuration...")
+            _console.print("\n[bold]Step 1:[/] Evaluating baseline configuration...")
 
         baseline_scores = []
         for val_ex in val_examples:
@@ -1558,17 +1758,18 @@ class PydanticOptimizer:
             sum(baseline_scores) / len(baseline_scores) if baseline_scores else 0.0
         )
         if self.verbose:
-            print(f"Baseline average score: {baseline_avg:.2%}")
+            _console.print(f"  Baseline score: [bold]{baseline_avg:.2%}[/]")
 
         # Optimize
         if self.verbose:
-            print("\nOptimizing prompts and field descriptions...")
-            if self.system_prompt:
-                print("  - System prompt")
-            if self.instruction_prompt:
-                print("  - Instruction prompt")
-            if self.field_descriptions:
-                print(f"  - {len(self.field_descriptions)} field descriptions")
+            targets = []
+            if self.field_descriptions and not self.skip_field_description_optimization:
+                targets.append(f"{len(effective_descriptions)} field descriptions")
+            if self.system_prompt and not self.skip_system_prompt_optimization:
+                targets.append("system prompt")
+            if self.instruction_prompt and not self.skip_instruction_prompt_optimization:
+                targets.append("instruction prompt")
+            _console.print(f"\n[bold]Step 2:[/] Optimizing {', '.join(targets)}...")
 
         # Some optimizers support valset, others don't
         # Try to use valset if supported, fall back to trainset only if not
@@ -1588,11 +1789,12 @@ class PydanticOptimizer:
                     program,
                     trainset=train_examples,
                     valset=val_examples,
+                    **self.compile_kwargs,
                 )
             except TypeError:
                 # If valset is not supported, fall back to trainset only
                 if self.verbose:
-                    print("Warning: Optimizer doesn't support valset, using trainset only")
+                    _console.print("  [dim]Note: Optimizer doesn't support valset, using trainset only[/]")
                 optimized_program = optimizer.compile(
                     program,
                     trainset=train_examples,
@@ -1601,6 +1803,7 @@ class PydanticOptimizer:
             optimized_program = optimizer.compile(
                 program,
                 trainset=train_examples,
+                **self.compile_kwargs,
             )
 
         # Build arguments for optimized program (field descriptions, types, and prompts)
@@ -1639,7 +1842,7 @@ class PydanticOptimizer:
 
         # Evaluate optimized config on validation set
         if self.verbose:
-            print("\nEvaluating optimized configuration...")
+            _console.print(f"\n[bold]Step 3:[/] Evaluating optimized configuration...")
 
         evaluation_scores = []
         for val_ex in val_examples:
@@ -1718,16 +1921,34 @@ class PydanticOptimizer:
         # Only use optimized prompts/descriptions if they improve performance
         if improvement < 0:
             if self.verbose:
-                print(
-                    f"\n⚠️  WARNING: Optimization decreased performance by {abs(improvement):.2%}"
+                _console.print(
+                    f"\n[yellow]Warning:[/] Optimization decreased performance by "
+                    f"{abs(improvement):.2%}. Keeping original descriptions."
                 )
-                print("Keeping original prompts and descriptions instead of optimized ones.")
             optimized_field_descriptions = self.field_descriptions.copy()
             optimized_system_prompt = self.system_prompt
             optimized_instruction_prompt = self.instruction_prompt
             avg_score = baseline_avg
             improvement = 0.0
             improvement_pct = 0.0
+        elif improvement == 0:
+            # On ties, prefer shorter (simpler) descriptions and prompts
+            for field_path, opt_desc in list(optimized_field_descriptions.items()):
+                original = self.field_descriptions.get(field_path, "")
+                if len(opt_desc) > len(original):
+                    optimized_field_descriptions[field_path] = original
+            if (
+                optimized_system_prompt
+                and self.system_prompt
+                and len(optimized_system_prompt) > len(self.system_prompt)
+            ):
+                optimized_system_prompt = self.system_prompt
+            if (
+                optimized_instruction_prompt
+                and self.instruction_prompt
+                and len(optimized_instruction_prompt) > len(self.instruction_prompt)
+            ):
+                optimized_instruction_prompt = self.instruction_prompt
 
         # Track API usage from DSPy LM history
         api_calls = 0
@@ -1764,23 +1985,9 @@ class PydanticOptimizer:
         )
 
         if self.verbose:
-            _console = Console()
-            table = Table(title="Optimization Complete", box=box.ROUNDED)
-            table.add_column("Metric", style="bold")
-            table.add_column("Value")
-            table.add_row("Baseline score", f"{baseline_avg:.2%}")
-            table.add_row("Final score", f"{avg_score:.2%}")
-            if improvement > 0:
-                table.add_row("Improvement", f"{improvement:+.2%}")
-            elif improvement < 0:
-                table.add_row("Improvement", f"{improvement:+.2%} [red](decreased)[/]")
-            else:
-                table.add_row("Improvement", "No change")
-            if api_calls > 0:
-                table.add_row("API calls", str(api_calls))
-            if total_tokens > 0:
-                table.add_row("Total tokens", f"{total_tokens:,}")
-            _console.print(table)
+            self._print_optimization_summary(
+                _console, result, self.field_descriptions, api_calls, total_tokens
+            )
 
         return result
 

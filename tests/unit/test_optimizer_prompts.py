@@ -537,3 +537,182 @@ def test_pydantic_optimizer_module_forward_with_field_descriptions_and_prompts()
     assert result.optimized_name == "Optimized name description"
     assert result.optimized_age == "Optimized age description"
 
+
+def test_skip_field_description_optimization_flag(lm) -> None:
+    """Test that skip_field_description_optimization flag is stored."""
+    examples = [
+        Example(
+            text="John Doe, 30",
+            expected_output={"name": "John Doe", "age": 30},
+        ),
+    ]
+    optimizer = PydanticOptimizer(
+        model=SimpleUser,
+        examples=examples,
+        evaluate_fn="exact",
+        skip_field_description_optimization=True,
+    )
+    assert optimizer.skip_field_description_optimization is True
+
+
+def test_skip_system_prompt_optimization_flag(lm) -> None:
+    """Test that skip_system_prompt_optimization flag is stored."""
+    examples = [
+        Example(
+            text="John Doe, 30",
+            expected_output={"name": "John Doe", "age": 30},
+        ),
+    ]
+    optimizer = PydanticOptimizer(
+        model=SimpleUser,
+        examples=examples,
+        evaluate_fn="exact",
+        system_prompt="Extract user info",
+        skip_system_prompt_optimization=True,
+    )
+    assert optimizer.skip_system_prompt_optimization is True
+
+
+def test_skip_instruction_prompt_optimization_flag(lm) -> None:
+    """Test that skip_instruction_prompt_optimization flag is stored."""
+    examples = [
+        Example(
+            text="John Doe, 30",
+            expected_output={"name": "John Doe", "age": 30},
+        ),
+    ]
+    optimizer = PydanticOptimizer(
+        model=SimpleUser,
+        examples=examples,
+        evaluate_fn="exact",
+        instruction_prompt="Parse the text",
+        skip_instruction_prompt_optimization=True,
+    )
+    assert optimizer.skip_instruction_prompt_optimization is True
+
+
+def test_skip_flags_default_to_false(lm) -> None:
+    """Test that all skip flags default to False."""
+    examples = [
+        Example(
+            text="John Doe, 30",
+            expected_output={"name": "John Doe", "age": 30},
+        ),
+    ]
+    optimizer = PydanticOptimizer(
+        model=SimpleUser,
+        examples=examples,
+        evaluate_fn="exact",
+    )
+    assert optimizer.skip_field_description_optimization is False
+    assert optimizer.skip_system_prompt_optimization is False
+    assert optimizer.skip_instruction_prompt_optimization is False
+
+
+def test_early_stopping_patience_stored(lm) -> None:
+    """Test that early_stopping_patience is stored."""
+    examples = [
+        Example(
+            text="John Doe, 30",
+            expected_output={"name": "John Doe", "age": 30},
+        ),
+    ]
+    optimizer = PydanticOptimizer(
+        model=SimpleUser,
+        examples=examples,
+        evaluate_fn="exact",
+        early_stopping_patience=3,
+    )
+    assert optimizer.early_stopping_patience == 3
+
+
+def test_early_stopping_patience_defaults_to_none(lm) -> None:
+    """Test that early_stopping_patience defaults to None (no early stopping)."""
+    examples = [
+        Example(
+            text="John Doe, 30",
+            expected_output={"name": "John Doe", "age": 30},
+        ),
+    ]
+    optimizer = PydanticOptimizer(
+        model=SimpleUser,
+        examples=examples,
+        evaluate_fn="exact",
+    )
+    assert optimizer.early_stopping_patience is None
+
+
+def test_auto_generate_prompts_creates_system_prompt(lm) -> None:
+    """Test that auto_generate_prompts creates a system prompt from model name."""
+    examples = [
+        Example(
+            text="John Doe, 30",
+            expected_output={"name": "John Doe", "age": 30},
+        ),
+    ]
+    optimizer = PydanticOptimizer(
+        model=SimpleUser,
+        examples=examples,
+        evaluate_fn="exact",
+        auto_generate_prompts=True,
+    )
+    assert optimizer.system_prompt is not None
+    assert "SimpleUser" in optimizer.system_prompt
+
+
+def test_auto_generate_prompts_creates_instruction_prompt(lm) -> None:
+    """Test that auto_generate_prompts creates an instruction prompt with field names."""
+    examples = [
+        Example(
+            text="John Doe, 30",
+            expected_output={"name": "John Doe", "age": 30},
+        ),
+    ]
+    optimizer = PydanticOptimizer(
+        model=SimpleUser,
+        examples=examples,
+        evaluate_fn="exact",
+        auto_generate_prompts=True,
+    )
+    assert optimizer.instruction_prompt is not None
+    assert "name" in optimizer.instruction_prompt
+    assert "age" in optimizer.instruction_prompt
+
+
+def test_auto_generate_prompts_does_not_override_existing(lm) -> None:
+    """Test that auto_generate_prompts does not override user-provided prompts."""
+    examples = [
+        Example(
+            text="John Doe, 30",
+            expected_output={"name": "John Doe", "age": 30},
+        ),
+    ]
+    optimizer = PydanticOptimizer(
+        model=SimpleUser,
+        examples=examples,
+        evaluate_fn="exact",
+        auto_generate_prompts=True,
+        system_prompt="My custom system prompt",
+        instruction_prompt="My custom instruction",
+    )
+    assert optimizer.system_prompt == "My custom system prompt"
+    assert optimizer.instruction_prompt == "My custom instruction"
+
+
+def test_auto_generate_prompts_defaults_to_false(lm) -> None:
+    """Test that auto_generate_prompts defaults to False."""
+    examples = [
+        Example(
+            text="John Doe, 30",
+            expected_output={"name": "John Doe", "age": 30},
+        ),
+    ]
+    optimizer = PydanticOptimizer(
+        model=SimpleUser,
+        examples=examples,
+        evaluate_fn="exact",
+    )
+    assert optimizer.auto_generate_prompts is False
+    assert optimizer.system_prompt is None
+    assert optimizer.instruction_prompt is None
+

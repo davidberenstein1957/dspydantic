@@ -1,6 +1,6 @@
 """dspydantic - Optimize Pydantic model field descriptions using DSPy."""
 
-__version__ = "0.1.4"
+__version__ = "0.1.5"
 
 # Import evaluators package to trigger registration - must be done before importing classes
 import dspydantic.evaluators  # noqa: F401
@@ -25,6 +25,11 @@ from dspydantic.extractor import (
     apply_optimized_descriptions,
     create_optimized_model,
     extract_field_descriptions,
+)
+from dspydantic.module import (
+    OptimizeFieldDescription,
+    OptimizeInstructionPrompt,
+    OptimizeSystemPrompt,
 )
 from dspydantic.optimizer import PydanticOptimizer
 from dspydantic.persistence import PersistenceError
@@ -70,5 +75,9 @@ __all__ = [
     "LabelModelGrader",
     "PythonCodeEvaluator",
     "PredefinedScoreEvaluator",
+    # Optimization signatures (for advanced users)
+    "OptimizeFieldDescription",
+    "OptimizeSystemPrompt",
+    "OptimizeInstructionPrompt",
 ]
 
