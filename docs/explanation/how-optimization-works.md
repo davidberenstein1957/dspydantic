@@ -187,6 +187,6 @@ The optimized descriptions and prompts are tailored to your use case. They may:
 - [Configure Optimizations](../guides/advanced/configure-optimizations.md) - Fast/default modes, optimizers, threads
 - [Field Inclusion & Exclusion](../guides/advanced/field-exclusion.md) - Focus on specific fields
 - [Architecture](architecture.md) - System design details
-- [Understanding Evaluators](evaluators.md) - How evaluation works
+- [Understanding Evaluators](understanding-evaluators.md) - How evaluation works
 - [Your First Optimization](../guides/optimization/first-optimization.md) - Complete workflow
 - [Reference: Prompter](../reference/api/prompter.md) - Technical details
