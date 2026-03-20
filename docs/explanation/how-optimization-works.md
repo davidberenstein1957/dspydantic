@@ -4,29 +4,37 @@ This page explains how DSPydantic optimization works, why it's effective, and th
 
 ## How Optimization Works
 
-DSPydantic uses DSPy's optimization algorithms to automatically improve field descriptions **and prompts**. By default, optimization runs in **default mode** (see below), which reduces the search space and often yields better results.
+DSPydantic uses DSPy's optimization algorithms to automatically improve field descriptions **and prompts**. You can choose between **single-pass mode** (default, fastest) and **sequential mode** (field-by-field, higher quality).
 
-### Default Mode (`fast=False`)
+### Single-Pass Mode (`sequential=False`, default)
 
-When `fast=False` (default):
+When `sequential=False` (default), all field descriptions and prompts are optimized together in one DSPy compile with reduced demo budgets (`max_bootstrapped_demos=1`). This is the fastest approach with lowest API costs.
+
+### Sequential Mode (`sequential=True`)
+
+When `sequential=True`:
 
 1. **Phase 1 – Fields**: Each field description is optimized independently, ordered by nesting depth (deepest first). All other fields stay fixed. This minimizes the search space per run.
 2. **Phase 2 – Prompts**: With field descriptions fixed, the system prompt and instruction prompt are optimized one at a time.
 3. **Rolling baseline**: Each improvement becomes the baseline for the next step.
+4. **Early stopping** (optional): With `early_stopping_patience=N`, optimization stops after N consecutive fields without improvement.
 
-### Fast Mode (`fast=True`)
+### Auto-Generated Prompts
 
-When `fast=True`, all field descriptions and prompts are optimized together in one DSPy run with reduced demo budgets (`max_bootstrapped_demos=1`). Use this for faster optimization with lower API costs, accepting slightly lower quality.
+With `auto_generate_prompts=True`, DSPydantic automatically creates system and instruction prompts from your model name and field names when they aren't provided. This gives the optimizer a meaningful starting point to improve upon.
 
 ## Optimization Flow
 
 ```mermaid
 flowchart TD
     A[User Examples] --> B[Prompter]
-    B --> C{fast?}
-    C -->|false (default)| D[Phase 1: Fields deepest-first]
+    B --> C{sequential?}
+    C -->|true| D[Phase 1: Fields deepest-first]
+    D --> D1{Early stopping?}
+    D1 -->|no improvement| D2[Skip remaining fields]
+    D1 -->|improved| D
     D --> E[Phase 2: Prompts]
-    C -->|true| F[Single-Pass: All at once with fast kwargs]
+    C -->|false, default| F[Single-Pass: All at once]
     E --> G[Evaluators]
     F --> G
     G --> H[Score Results]
@@ -34,6 +42,20 @@ flowchart TD
     I --> J[Optimized Prompter]
     J --> K[Extract Data]
 ```
+
+## Contextual Optimization
+
+DSPydantic uses **contextual signatures** to give the optimizer domain awareness without bloating token usage. When optimizing field descriptions, the optimizer knows:
+
+1. **Which model** is being optimized (e.g., `MedicalRecord`) — embedded in the signature class name (`OptimizeMedicalRecordFieldDescription`) at zero extra token cost
+2. **Which field** is being optimized (e.g., `patient_name`) — passed as an input field (~2-5 tokens per call)
+3. **The task domain** — a concise docstring (~25 tokens) tells the optimizer this is a structured extraction task
+
+This is particularly important for MiPROv2, whose proposer generates instruction candidates based on the signature. Without context, it produces generic meta-instructions like "Given the fields `field_description`, produce `optimized_field_description`" instead of actual improved descriptions.
+
+### Tie-Breaking: Prefer Simplicity
+
+When multiple candidates achieve the same score, DSPydantic prefers the **shorter (simpler)** option. This applies to both field descriptions and prompts. Shorter descriptions are more token-efficient at inference time and tend to be less ambiguous.
 
 ## Why It Works
 

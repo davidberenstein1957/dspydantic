@@ -15,6 +15,10 @@ This guide covers how to configure optimization parameters, choose the right DSP
 | parallel_fields | True | True for sequential mode | Parallelizes field optimization |
 | max_val_examples | None | 3-5 to reduce API calls | Validation set size |
 | skip_score_threshold | None | 0.95 for high-scoring fields | Skip well-optimized fields |
+| early_stopping_patience | None | 2-3 in sequential mode | Stop when no improvement |
+| auto_generate_prompts | False | True for quick start | Auto-create system/instruction prompts |
+| optimizer_kwargs | None | `{"auto": None, "num_candidates": 3}` | Extra kwargs for optimizer constructor |
+| compile_kwargs | None | `{"num_trials": 5}` for testing | Extra kwargs for DSPy compile |
 | include_fields | None | As needed | Focus optimization |
 | exclude_fields | None | As needed | Skip metadata in scoring |
 
@@ -478,9 +482,81 @@ result = prompter.optimize(
 
 ---
 
-## Advanced: Custom Optimizer Kwargs
+## Early Stopping
 
-Pass additional arguments to DSPy optimizers:
+In sequential mode, stop optimizing when scores plateau:
+
+```python
+result = prompter.optimize(
+    examples=examples,
+    sequential=True,
+    early_stopping_patience=2,  # Stop after 2 fields without improvement
+)
+```
+
+Fields are optimized deepest-first. If `early_stopping_patience` consecutive fields show no improvement, the remaining fields are skipped. This can significantly reduce API costs when most fields already have good descriptions.
+
+---
+
+## Auto-Generate Prompts
+
+Automatically create system and instruction prompts from your model:
+
+```python
+result = prompter.optimize(
+    examples=examples,
+    auto_generate_prompts=True,
+)
+```
+
+This generates sensible defaults based on your model name and field names:
+- **System prompt**: `"You are an expert at extracting structured {ModelName} data from text. Be precise and faithful to the source text."`
+- **Instruction prompt**: `"Extract the following fields from the given text: field1, field2, .... Return only values that are explicitly stated or clearly implied."`
+
+Existing prompts are preserved — auto-generation only fills in `None` values. The generated prompts are then optimized alongside field descriptions.
+
+---
+
+## Contextual Optimization
+
+DSPydantic automatically creates **model-aware optimization signatures** that give DSPy optimizers (especially MiPROv2) domain context without bloating token usage:
+
+- **Dynamic class name**: The optimizer sees `OptimizeMedicalRecordFieldDescription` instead of a generic name — zero extra tokens
+- **Field name input**: The optimizer knows *which* field it's improving (e.g., `patient_name`) — ~2-5 extra tokens per call
+- **Concise docstring**: Includes the model name for domain context — ~25 tokens
+
+This prevents MiPROv2's proposer from generating generic meta-instructions like "Given the fields `field_description`, produce `optimized_field_description`" and instead produces actual improved field descriptions.
+
+### Tie-Breaking: Prefer Simplicity
+
+When multiple optimization candidates achieve the same score, DSPydantic prefers the **shorter (simpler)** option. This applies to field descriptions, system prompts, and instruction prompts. Shorter descriptions save tokens at inference time across every future extraction call.
+
+---
+
+## Skip Optimization Phases
+
+Skip specific optimization phases to keep certain parts fixed:
+
+```python
+# Only optimize prompts, keep field descriptions as-is
+result = prompter.optimize(
+    examples=examples,
+    skip_field_description_optimization=True,
+)
+
+# Only optimize field descriptions, skip prompt optimization
+result = prompter.optimize(
+    examples=examples,
+    skip_system_prompt_optimization=True,
+    skip_instruction_prompt_optimization=True,
+)
+```
+
+---
+
+## Custom Optimizer and Compile Arguments
+
+Pass additional arguments to DSPy optimizers at construction time:
 
 ```python
 result = prompter.optimize(
@@ -493,6 +569,18 @@ result = prompter.optimize(
     },
 )
 ```
+
+Pass extra arguments to the DSPy `compile()` call:
+
+```python
+# Limit MiPROv2 trials for faster iteration
+result = prompter.optimize(
+    examples=examples,
+    compile_kwargs={"num_trials": 5, "minibatch": False},
+)
+```
+
+This is particularly useful for controlling MiPROv2's trial count during testing or development.
 
 ---
 
@@ -554,21 +642,26 @@ The `FieldOptimizationProgress` object contains:
 ### Optimization is slow
 
 - Reduce examples (start with 5-10)
+- Use single-pass mode (default, `sequential=False`)
 - Use `BootstrapFewShot` instead of random search
 - Increase `num_threads`
 - Use `MIPROv2(auto="light")` instead of `"heavy"`
+- Limit trials with `compile_kwargs={"num_trials": 5}`
 
 ### High API costs
 
 - Use cheaper model (`gpt-4o-mini`)
 - Enable caching (`cache=True`)
 - Start with fewer examples
+- Use `early_stopping_patience` in sequential mode
 - Use simpler optimizer first
 
 ### Poor optimization results
 
 - Add more diverse examples
 - Try `MIPROv2(auto="medium")` for better quality
+- Use `sequential=True` for field-by-field optimization
+- Use `auto_generate_prompts=True` to add system/instruction prompts
 - Check that examples are correct
 - Ensure examples cover edge cases
 
