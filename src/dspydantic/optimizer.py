@@ -24,7 +24,7 @@ from dspydantic.utils import convert_images_to_dspy_images, format_instruction_p
 # Fast mode optimization kwargs: reduce demo count and optimizer complexity
 _FAST_MODE_KWARGS: dict[str, dict] = {
     "bootstrapfewshot": {"max_bootstrapped_demos": 1},
-    "bootstrapfewshotwithrandomsearch": {"max_bootstrapped_demos": 1, "num_candidates": 4},
+    "bootstrapfewshotwithrandomsearch": {"max_bootstrapped_demos": 1, "num_candidate_programs": 4},
     "miprov2": {"auto": "light", "max_bootstrapped_demos": 1},
     "miprov2zeroshot": {"auto": "light"},
 }
